@@ -1,0 +1,27 @@
+{
+  "name": "bunny-stream-server",
+  "version": "1.0.0",
+  "description": "NodeJS backend server for bunny stream",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "npm run test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ullasasindhur/bunny-stream-server.git"
+  },
+  "author": "Ullasa Sindhur",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ullasasindhur/bunny-stream-server/issues"
+  },
+  "type": "module",
+  "homepage": "https://github.com/ullasasindhur/bunny-stream-server#readme",
+  "dependencies": {
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "got": "^14.4.7"
+  }
+}
