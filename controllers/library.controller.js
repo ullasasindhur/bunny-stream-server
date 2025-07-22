@@ -13,7 +13,7 @@ const replicationRegions = {
 }
 
 
-const getLibrary = async (req, res) => {
+const getLibraries = async (req, res) => {
     try {
         const options = {
             headers: { accept: 'application/json', AccessKey: process.env.API_KEY },
@@ -37,7 +37,7 @@ const getLibrary = async (req, res) => {
     }
 }
 
-const getLibraryItem = async (req, res) => {
+const getLibrary = async (req, res) => {
     try {
         const options = {
             headers: { accept: 'application/json', AccessKey: process.env.API_KEY },
@@ -105,8 +105,8 @@ const deleteLibrary = async (req, res) => {
     }
 }
 export {
+    getLibraries,
     getLibrary,
-    getLibraryItem,
     createLibrary,
     getReplicationRegions,
     deleteLibrary
