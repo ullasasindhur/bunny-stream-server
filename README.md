@@ -1,5 +1,3 @@
-
-
 # 🐰 Bunny Stream Server
 
 A robust, production-ready Node.js backend server for managing Bunny.net video libraries, collections, and videos.
@@ -63,6 +61,10 @@ Create a `.env` file in the root directory:
 PORT=3000
 API_KEY=your_bunny_api_key
 LIBRARY_API_KEY=your_bunny_library_api_key
+DB_HOST=your_database_hostname
+DB_USER=your_database_username
+DB_PASSWORD=your_database_password
+DB_NAME=your_database_name
 ```
 
 ---
@@ -94,7 +96,6 @@ All endpoints return JSON responses. Parameters are clearly separated into **Que
 
 ---
 
-### 📚 Library Endpoints
 ### 📚 Library Endpoints
 
 
@@ -459,6 +460,10 @@ GET /videos?libraryId=123&page=1&itemsPerPage=10
 - `PORT`: Server port (default: 3000)
 - `API_KEY`: Bunny.net API key (for library endpoints)
 - `LIBRARY_API_KEY`: Bunny.net Library API key (for collections/videos endpoints)
+- `DB_HOST`: MySQL host 
+- `DB_USER`: MySQL user
+- `DB_PASSWORD`: MySQL password
+- `DB_NAME`: MySQL database name
 
 ---
 
