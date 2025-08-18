@@ -1,11 +1,9 @@
 import express, { json } from "express";
-import { config } from "dotenv";
 import libraryRoutes from "./routes/library.routes.js";
 import collectionsRoutes from "./routes/collections.routes.js";
 import videosRoutes from "./routes/videos.routes.js";
 import getDb from './database.js';
 
-config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const db = getDb();
