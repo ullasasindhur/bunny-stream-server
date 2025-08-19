@@ -31,7 +31,7 @@ async function initializeDatabase() {
     });
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS library (
+      CREATE TABLE IF NOT EXISTS libraries (
         id INT PRIMARY KEY,
         name VARCHAR(255) NOT NULL UNIQUE,
         description TEXT,
@@ -49,7 +49,7 @@ async function initializeDatabase() {
         thumbnail_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (library_id) REFERENCES library(id) ON DELETE CASCADE,
+        FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
         INDEX idx_library_id (library_id)
       );
     `);

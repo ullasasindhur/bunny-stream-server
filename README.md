@@ -17,6 +17,7 @@ Built with [Express](https://expressjs.com/) and [got](https://github.com/sindre
   - [Collections Endpoints](#-collections-endpoints)
   - [Videos Endpoints](#-videos-endpoints)
 - [Environment Variables](#-environment-variables)
+- [Database Schema](#-database-schema)
 - [Usage & Development](#-usage--development)
 - [Testing](#-testing)
 - [Security](#-security)
@@ -25,7 +26,7 @@ Built with [Express](https://expressjs.com/) and [got](https://github.com/sindre
 - [Contact](#-contact)
 - [References](#-references)
 
-
+---
 
 ## 🚀 Features
 
@@ -39,8 +40,6 @@ Built with [Express](https://expressjs.com/) and [got](https://github.com/sindre
 
 ---
 
-
-
 ## 📦 Installation
 
 ```sh
@@ -50,8 +49,6 @@ npm install
 ```
 
 ---
-
-
 
 ## ⚙️ Configuration
 
@@ -69,8 +66,6 @@ DB_NAME=your_database_name
 
 ---
 
-
-
 ## 🏁 Running the Server
 
 ```sh
@@ -84,9 +79,6 @@ npm start
 Server will run on `http://localhost:3000` by default.
 
 ---
-
-
-
 
 ## 🛣️ API Endpoints
 
@@ -485,6 +477,62 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) _(if available)_ for guidelines.
 ---
 
 
+## 🗃️ Database Schema
+
+Libraries table
+
+| Column            | Type          | Null | Key | Default                                   | Extra                              |
+|-------------------|---------------|:----:|:---:|-------------------------------------------|------------------------------------|
+| id                | INT           | NO   | PRI | (none)                                    | PRIMARY KEY                        |
+| name              | VARCHAR(255)  | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                   |
+| description       | TEXT          | YES  |     | NULL                                      |                                    |
+| api_key           | VARCHAR(64)   | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                   |
+| read_only_api_key | VARCHAR(64)   | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                   |
+| created_at        | TIMESTAMP     | NO   |     | CURRENT_TIMESTAMP                         | DEFAULT CURRENT_TIMESTAMP          |
+| updated_at        | TIMESTAMP     | NO   |     | CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |                                    |
+
+Videos table
+
+| Column        | Type           | Null | Key | Default                                   | Extra                                            |
+|---------------|----------------|:----:|:---:|-------------------------------------------|--------------------------------------------------|
+| guid          | VARCHAR(36)    | NO   | PRI | (none)                                    | PRIMARY KEY                                      |
+| library_id    | INT            | NO   | MUL | (none)                                    | FOREIGN KEY -> libraries(id) ON DELETE CASCADE   |
+| title         | VARCHAR(255)   | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                                 |
+| description   | TEXT           | YES  |     | NULL                                      |                                                  |
+| thumbnail_url | TEXT           | YES  |     | NULL                                      |                                                  |
+| created_at    | TIMESTAMP      | NO   |     | CURRENT_TIMESTAMP                         | DEFAULT CURRENT_TIMESTAMP                        |
+| updated_at    | TIMESTAMP      | NO   |     | CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |                                                  |
+|               |                |      |     |                                           | INDEX idx_library_id (library_id)                |
+
+
+CREATE TABLE statements:
+
+```sql
+-- libraries table (created by database.js)
+CREATE TABLE IF NOT EXISTS libraries (
+  id INT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  description TEXT,
+  api_key VARCHAR(64) NOT NULL UNIQUE,
+  read_only_api_key VARCHAR(64) NOT NULL UNIQUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- videos table (created by database.js)
+CREATE TABLE IF NOT EXISTS videos (
+  guid VARCHAR(36) PRIMARY KEY,
+  library_id INT NOT NULL,
+  title VARCHAR(255) NOT NULL UNIQUE,
+  description TEXT,
+  thumbnail_url TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
+  INDEX idx_library_id (library_id)
+);
+```
+
 ## 🧑‍💻 Usage & Development
 
 - **Install dependencies:** `npm install`
@@ -516,6 +564,7 @@ _No automated tests are included by default. Add tests in a `tests/` directory a
 
 - `controllers/` — Business logic for each resource
 - `routes/` — Express route definitions
+- `database.js` — DB initialization and pool creation (auto-creates DB/tables)
 - `README.md` — API contract, parameter conventions, and usage examples
 - `.env` — Required for local/dev/prod operation
 
@@ -541,3 +590,6 @@ For questions, contact [Ullasa Poojith Sindhur](https://github.com/ullasasindhur
 - [Bunny.net Video API Docs](https://docs.bunny.net/reference/video-overview)
 - [Express.js](https://expressjs.com/)
 - [got HTTP client](https://github.com/sindresorhus/got)
+- [mysql2/promise](https://github.com/sidorares/node-mysql2)
+- [got HTTP client](https://github.com/sindresorhus/got)
+- [mysql2/promise](https://github.com/sidorares/node-mysql2)
