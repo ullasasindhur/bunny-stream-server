@@ -72,7 +72,7 @@ const createLibrary = async (req, res) => {
                 message: `A library named '${name}' already exists.`
             });
         }
-        const options = {
+        const libraryOptions = {
             headers: {
                 accept: 'application/json',
                 'content-type': 'application/json',
@@ -80,12 +80,18 @@ const createLibrary = async (req, res) => {
             },
             body: JSON.stringify({ Name: name, ReplicationRegions: JSON.parse(regions) })
         };
-        const data = await got.post(url, options).json();
-        const [newLibrary] = await db.query(`INSERT INTO ${tableName}(name, description, api_key, read_only_api_key, id) VALUES(?, ?, ?, ?, ?)`, [data.Name, data.Name, data.ApiKey, data.ReadOnlyApiKey, data.Id]);
+        const libraryData = await got.post(url, libraryOptions).json();
+        const pullZoneOptions = {
+            headers: {
+                accept: 'application/json',
+                AccessKey: process.env.API_KEY
+            },
+        };
+        const pullZoneData = await got.get(`https://api.bunny.net/pullzone/${libraryData.PullZoneId}?includeCertificate=false`, pullZoneOptions).json();
+        await db.query(`INSERT INTO ${tableName}(name, description, api_key, read_only_api_key, id, pull_zone_id, pull_zone_url, pull_zone_security_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, [libraryData.Name, libraryData.Name, libraryData.ApiKey, libraryData.ReadOnlyApiKey, libraryData.ID, pullZoneData.ID, pullZoneData.Hostnames[0].Value, pullZoneData.ZoneSecurityKey]);
         res.status(201).json({
             success: true,
-            message: `Library '${name}' was created successfully.`,
-            data
+            message: `Library '${name}' was created successfully.`
         });
     } catch (error) {
         console.error('Error creating library:', error);

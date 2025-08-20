@@ -37,6 +37,9 @@ async function initializeDatabase() {
         description TEXT,
         api_key VARCHAR(64) NOT NULL UNIQUE,
         read_only_api_key VARCHAR(64) NOT NULL UNIQUE,
+        pull_zone_id INT UNIQUE,
+        pull_zone_url VARCHAR(255) NOT NULL,
+        pull_zone_security_key VARCHAR(64) NOT NULL UNIQUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       );

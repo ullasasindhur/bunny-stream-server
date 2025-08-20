@@ -1,4 +1,10 @@
 import { got } from "got";
+import crypto from "node:crypto";
+import { Buffer } from "node:buffer";
+import getDb from "../database.js";
+
+const db = getDb();
+const tableName = "videos";
 const url = 'https://video.bunnycdn.com/library';
 const captionsList = [
     { "code": "aa", "name": "Afar" },
@@ -232,25 +238,110 @@ const getVideo = async (req, res) => {
     }
 };
 
-const uploadVideo = async (req, res) => {
+const getVideoURL = async (req, res) => {
     try {
+        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [req.params.id]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ message: `Video ${req.params.id} not found in local DB` });
+        }
+        const { guid: videoID, library_id: libraryID } = rows[0];
+        [rows] = await db.query('SELECT pull_zone_security_key, pull_zone_url FROM libraries WHERE id = ? LIMIT 1', [libraryID]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ message: `Library not found for video ${req.params.id}` });
+        }
+        const { pull_zone_security_key: securityKey, pull_zone_url: pullZoneUrl } = rows[0];
+        if (!securityKey || !pullZoneUrl) {
+            return res.status(500).json({ message: "Missing pull zone details for library" });
+        }
+        const expires = Math.floor(Date.now() / 1000) + 3600;
+        const path = `/${videoID}/playlist.m3u8`;
+        const hashableBase = securityKey + path + expires;
+        let token = crypto.createHash("sha256").update(hashableBase).digest("base64");
+        token = token.replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
+        const playUrl = `https://${pullZoneUrl}${path}?token=${token}&expires=${expires}`;
+        res.json({
+            message: "Video URL fetched successfully",
+            playUrl
+        });
+    } catch (error) {
+        console.error("Error fetching video URL:", error);
+        res.status(500).json({
+            message: "Failed to fetch video URL",
+            error: error.message
+        });
+    }
+};
+
+const getVideoThumbnailURL = async (req, res) => {
+    try {
+        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [req.params.id]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ message: `Video ${req.params.id} not found in local DB` });
+        }
+        const { guid: videoID, library_id: libraryID } = rows[0];
+        [rows] = await db.query('SELECT pull_zone_security_key, pull_zone_url FROM libraries WHERE id = ? LIMIT 1', [libraryID]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ message: `Library not found for video ${req.params.id}` });
+        }
+        const { pull_zone_security_key: securityKey, pull_zone_url: pullZoneUrl } = rows[0];
+        if (!securityKey || !pullZoneUrl) {
+            return res.status(500).json({ message: "Missing pull zone details for library" });
+        }
+        const expires = Math.floor(Date.now() / 1000) + 3600;
+        const path = `/${videoID}/thumbnail.jpg`;
+        const hashableBase = securityKey + path + expires;
+        let token = crypto.createHash("sha256").update(hashableBase).digest("base64");
+        token = token.replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
+        const thumbnailUrl = `https://${pullZoneUrl}${path}?token=${token}&expires=${expires}`;
+        res.json({
+            message: "Video thumbnail URL fetched successfully",
+            thumbnailUrl
+        });
+    } catch (error) {
+        console.error("Error fetching video thumbnail URL:", error);
+        res.status(500).json({
+            message: "Failed to fetch video thumbnail URL",
+            error: error.message
+        });
+    }
+};
+
+const createVideo = async (req, res) => {
+    try {
+        const { libraryName, title, collectionId, thumbnailTime } = req.body;
+        let [rows] = await db.query(`SELECT * FROM ${tableName} WHERE title = ?`, [title]);
+        if (rows && rows.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: `A video titled '${title}' already exists.`
+            });
+        }
+        [rows] = await db.query(
+            'SELECT api_key, id FROM libraries WHERE name = ? LIMIT 1',
+            [libraryName]
+        );
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ message: `Library ${libraryName} not found` });
+        }
+        const { id: libraryID, api_key: apiKey } = rows[0];
         const options = {
             headers: {
                 accept: 'application/json',
-                AccessKey: process.env.LIBRARY_API_KEY,
+                AccessKey: apiKey,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ title: req.body.title, collectionId: req.body.collectionId || '', thumbnailTime: req.body.thumbnailTime || 0 }),
+            body: JSON.stringify({ title, collectionId: collectionId || '', thumbnailTime: thumbnailTime || 0 }),
         };
-        const data = await got.post(`${url}/${req.body.libraryId}/videos`, options).json();
-        res.json({
-            message: "Video uploaded successfully",
-            data
+        const data = await got.post(`${url}/${libraryID}/videos`, options).json();
+        const insertQuery = 'INSERT INTO videos (guid, library_id, title, description) VALUES (?, ?, ?, ?)';
+        await db.query(insertQuery, [data.guid, libraryID, title, title]);
+        res.status(200).json({
+            message: `Video ${title} created successfully`
         });
     } catch (error) {
-        console.error("Error uploading video:", error);
+        console.error("Error creating video:", error);
         res.status(500).json({
-            message: "Failed to upload video",
+            message: "Failed to create video",
             error: error.message
         });
     }
@@ -281,4 +372,4 @@ const getCaptionsList = (req, res) => {
     });
 };
 
-export { getVideos, getVideo, uploadVideo, deleteVideo, getCaptionsList };
+export { getVideos, getVideo, createVideo, deleteVideo, getCaptionsList, getVideoURL, getVideoThumbnailURL };
