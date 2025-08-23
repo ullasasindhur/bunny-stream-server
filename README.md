@@ -357,67 +357,110 @@ Notes:
 
 ---
 
-## 🗃️ Database Schema
+## 📚 Database Schema
 
-Libraries table (updated to store pull zone info)
+This database is designed to manage a collection of video libraries, their associated videos, and genre classifications. It supports relational integrity, indexing for performance, and timestamp tracking.
 
-| Column                 | Type          | Null | Key | Default                                   | Extra                              |
-|------------------------|---------------|:----:|:---:|-------------------------------------------|------------------------------------|
-| id                     | INT           | NO   | PRI | (none)                                    | PRIMARY KEY                        |
-| name                   | VARCHAR(255)  | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                   |
-| description            | TEXT          | YES  |     | NULL                                      |                                    |
-| api_key                | VARCHAR(64)   | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                   |
-| read_only_api_key      | VARCHAR(64)   | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                   |
-| pull_zone_id           | INT           | YES  | UNI | NULL                                      | pull zone id from Bunny.net        |
-| pull_zone_url          | VARCHAR(255)  | YES  |     | NULL                                      | hostname used to build URLs        |
-| pull_zone_security_key | VARCHAR(64)   | YES  | UNI | NULL                                      | used to sign play/thumbnail URLs   |
-| created_at             | TIMESTAMP     | NO   |     | CURRENT_TIMESTAMP                         | DEFAULT CURRENT_TIMESTAMP          |
-| updated_at             | TIMESTAMP     | NO   |     | CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |                                    |
+---
 
-Videos table
+### 🏗️ Database: `${DB_NAME}`
 
-| Column        | Type           | Null | Key | Default                                   | Extra                                            |
-|---------------|----------------|:----:|:---:|-------------------------------------------|--------------------------------------------------|
-| guid          | VARCHAR(36)    | NO   | PRI | (none)                                    | PRIMARY KEY                                      |
-| library_id    | INT            | NO   | MUL | (none)                                    | FOREIGN KEY -> libraries(id) ON DELETE CASCADE   |
-| title         | VARCHAR(255)   | NO   | UNI | (none)                                    | NOT NULL, UNIQUE                                 |
-| description   | TEXT           | YES  |     | NULL                                      |                                                  |
-| thumbnail_url | TEXT           | YES  |     | NULL                                      |                                                  |
-| created_at    | TIMESTAMP      | NO   |     | CURRENT_TIMESTAMP                         | DEFAULT CURRENT_TIMESTAMP                        |
-| updated_at    | TIMESTAMP      | NO   |     | CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP |                                                  |
-|               |                |      |     |                                           | INDEX idx_library_id (library_id)                |
+Environment variables required:
 
+- `DB_HOST`
+- `DB_USER`
+- `DB_PASSWORD`
+- `DB_NAME`
 
-CREATE TABLE statements (the running code auto-creates these):
+---
 
-```sql
--- libraries table (created by database.js)
-CREATE TABLE IF NOT EXISTS libraries (
-  id INT PRIMARY KEY,
-  name VARCHAR(255) NOT NULL UNIQUE,
-  description TEXT,
-  api_key VARCHAR(64) NOT NULL UNIQUE,
-  read_only_api_key VARCHAR(64) NOT NULL UNIQUE,
-  pull_zone_id INT UNIQUE,
-  pull_zone_url VARCHAR(255),
-  pull_zone_security_key VARCHAR(64) UNIQUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+### 📁 Tables Overview
 
--- videos table (created by database.js)
-CREATE TABLE IF NOT EXISTS videos (
-  guid VARCHAR(36) PRIMARY KEY,
-  library_id INT NOT NULL,
-  title VARCHAR(255) NOT NULL UNIQUE,
-  description TEXT,
-  thumbnail_url TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
-  INDEX idx_library_id (library_id)
-);
-```
+| Table Name       | Description                                      |
+|------------------|--------------------------------------------------|
+| `libraries`      | Stores metadata about each video library         |
+| `videos`         | Contains individual video entries                |
+| `genres`         | Master list of genres                            |
+| `video_genres`   | Many-to-many relationship between videos & genres|
+
+---
+
+### 📦 Table: `libraries`
+
+Stores information about each video library.
+
+| Column Name              | Type           | Constraints                          | Description                          |
+|--------------------------|----------------|--------------------------------------|--------------------------------------|
+| `id`                     | INT            | PRIMARY KEY                          | Unique identifier                    |
+| `name`                   | VARCHAR(255)   | NOT NULL, UNIQUE                     | Library name                         |
+| `description`            | TEXT           |                                      | Optional description                 |
+| `api_key`                | VARCHAR(64)    | NOT NULL, UNIQUE                     | Full-access API key                  |
+| `read_only_api_key`      | VARCHAR(64)    | NOT NULL, UNIQUE                     | Read-only API key                    |
+| `pull_zone_id`           | INT            | UNIQUE                               | CDN pull zone ID                     |
+| `pull_zone_url`          | VARCHAR(255)   | NOT NULL                             | CDN pull zone URL                    |
+| `pull_zone_security_key` | VARCHAR(64)    | NOT NULL, UNIQUE                     | CDN security key                     |
+| `created_at`             | TIMESTAMP      | DEFAULT CURRENT_TIMESTAMP            | Creation timestamp                   |
+| `updated_at`             | TIMESTAMP      | Auto-updated on modification         | Last update timestamp                |
+
+---
+
+### 🎬 Table: `videos`
+
+Stores individual video entries linked to a library.
+
+| Column Name     | Type           | Constraints                          | Description                          |
+|-----------------|----------------|--------------------------------------|--------------------------------------|
+| `guid`          | VARCHAR(36)    | PRIMARY KEY                          | Unique video identifier (UUID)       |
+| `library_id`    | INT            | NOT NULL, FOREIGN KEY                | References `libraries(id)`           |
+| `title`         | VARCHAR(255)   | NOT NULL, UNIQUE                     | Video title                          |
+| `description`   | TEXT           |                                      | Optional description                 |
+| `thumbnail_url` | TEXT           |                                      | URL to thumbnail image               |
+| `created_at`    | TIMESTAMP      | DEFAULT CURRENT_TIMESTAMP            | Creation timestamp                   |
+| `updated_at`    | TIMESTAMP      | Auto-updated on modification         | Last update timestamp                |
+
+🔗 **Relationships**:
+
+- `library_id` → `libraries.id` (CASCADE on delete)
+- Indexed by `library_id` for faster lookup
+
+---
+
+### 🎭 Table: `genres`
+
+Stores the list of available genres.
+
+| Column Name | Type           | Constraints           | Description              |
+|-------------|----------------|-----------------------|--------------------------|
+| `id`        | INT            | AUTO_INCREMENT, PK    | Unique genre ID          |
+| `name`      | VARCHAR(100)   | NOT NULL, UNIQUE      | Genre name               |
+| `slug`      | VARCHAR(100)   | NOT NULL, UNIQUE      | URL-friendly identifier  |
+
+📌 **Preloaded Genres**:
+
+- Action, Adventure, Animation, Biography, Comedy, Crime, Documentary, Drama, Family, Fantasy, History, Horror, Music, Mystery, Romance, Sci-Fi, Sports, Thriller, War, Western
+
+---
+
+### 🔗 Table: `video_genres`
+
+Joins videos and genres (many-to-many relationship).
+
+| Column Name  | Type         | Constraints                          | Description                          |
+|--------------|--------------|--------------------------------------|--------------------------------------|
+| `video_guid` | VARCHAR(36)  | PRIMARY KEY, FOREIGN KEY             | References `videos.guid`             |
+| `genre_id`   | INT          | PRIMARY KEY, FOREIGN KEY             | References `genres.id`               |
+
+📌 **Indexes**:
+
+- `genre_id` for efficient genre-based queries
+
+---
+
+### 🧠 Notes
+
+- All foreign keys use `ON DELETE CASCADE` to maintain referential integrity.
+- `INSERT IGNORE` ensures genre seeding doesn't duplicate entries.
+- `multipleStatements: true` allows batch execution of SQL commands.
 
 ---
 
