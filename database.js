@@ -55,8 +55,44 @@ async function initializeDatabase() {
         FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
         INDEX idx_library_id (library_id)
       );
-    `);
 
+      CREATE TABLE IF NOT EXISTS genres (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        slug VARCHAR(100) NOT NULL UNIQUE
+      );
+
+      CREATE TABLE IF NOT EXISTS video_genres (
+        video_guid VARCHAR(36) NOT NULL,
+        genre_id INT NOT NULL,
+        PRIMARY KEY (video_guid, genre_id),
+        FOREIGN KEY (video_guid) REFERENCES videos(guid) ON DELETE CASCADE,
+        FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE,
+        INDEX idx_genre_id (genre_id)
+      );
+
+      INSERT IGNORE INTO genres (name, slug) VALUES
+        ('Action', 'action'),
+        ('Adventure', 'adventure'),
+        ('Animation', 'animation'),
+        ('Biography', 'biography'),
+        ('Comedy', 'comedy'),
+        ('Crime', 'crime'),
+        ('Documentary', 'documentary'),
+        ('Drama', 'drama'),
+        ('Family', 'family'),
+        ('Fantasy', 'fantasy'),
+        ('History', 'history'),
+        ('Horror', 'horror'),
+        ('Music', 'music'),
+        ('Mystery', 'mystery'),
+        ('Romance', 'romance'),
+        ('Sci-Fi', 'sci-fi'),
+        ('Sports', 'sports'),
+        ('Thriller', 'thriller'),
+        ('War', 'war'),
+        ('Western', 'western'),
+      `);
     console.log('✅ Database and tables are ready.');
   } catch (err) {
     console.error('❌ Error initializing database:', err);
