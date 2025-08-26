@@ -3,10 +3,13 @@ import libraryRoutes from "./routes/library.routes.js";
 import collectionsRoutes from "./routes/collections.routes.js";
 import videosRoutes from "./routes/videos.routes.js";
 import getDb from './database.js';
+import cors from 'cors';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const db = getDb();
+
+app.use(cors());
 
 app.use(json());
 
