@@ -91,7 +91,7 @@ async function initializeDatabase() {
         ('Sports', 'sports'),
         ('Thriller', 'thriller'),
         ('War', 'war'),
-        ('Western', 'western'),
+        ('Western', 'western')
       `);
     console.log('✅ Database and tables are ready.');
   } catch (err) {
