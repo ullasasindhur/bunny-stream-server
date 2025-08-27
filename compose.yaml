@@ -4,15 +4,25 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MARIADB_ROOT_PASSWORD: Passw0rd
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: [ "CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "--password=${DB_PASSWORD}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
   bunny-stream:
     build:
       context: .
       dockerfile: Dockerfile
     image: bunny-stream:1.0.0
     volumes:
-      - .:/app
+      - type: bind
+        source: .
+        target: /app
+      - /app/node_modules
     ports:
       - "3000:3000"
     depends_on:
-      - database
+      database:
+        condition: service_healthy

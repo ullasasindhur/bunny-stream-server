@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "dotenvx run -- node index.js",
-    "dev": "dotenvx run -- nodemon index.js"
+    "dev": "dotenvx run -- nodemon -L index.js"
   },
   "repository": {
     "type": "git",
