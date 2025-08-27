@@ -1,5 +1,5 @@
 import express, { json } from "express";
-import libraryRoutes from "./routes/library.routes.js";
+import librariesRoutes from "./routes/libraries.routes.js";
 import collectionsRoutes from "./routes/collections.routes.js";
 import videosRoutes from "./routes/videos.routes.js";
 import getDb from './database.js';
@@ -13,7 +13,7 @@ app.use(cors());
 
 app.use(json());
 
-app.use('/library', libraryRoutes);
+app.use('/libraries', librariesRoutes);
 app.use('/collections', collectionsRoutes);
 app.use('/videos', videosRoutes);
 

@@ -17,19 +17,29 @@ const tableName = 'libraries';
 
 const getLibraries = async (req, res) => {
     try {
-        const options = {
-            headers: { accept: 'application/json', AccessKey: process.env.API_KEY },
-            searchParams: {
-                page: req.query.page || 1,
-                perPage: req.query.perPage || 1,
-                search: req.query.search || '',
-            }
-        };
-        const data = await got.get(url, options).json();
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        const [rows] = await db.query(
+            `SELECT id, name, description, pull_zone_url, pull_zone_id 
+             FROM ${tableName} 
+             LIMIT ? OFFSET ?`,
+            [limit, offset]
+        );
+        const [countResult] = await db.query(`SELECT COUNT(*) as totalCount FROM ${tableName}`);
+        const totalCount = countResult[0].totalCount;
+
         res.json({
             success: true,
             message: "Libraries fetched successfully.",
-            data
+            data: rows,
+            pagination: {
+                currentPage: page,
+                limit,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit)
+            }
         });
     } catch (error) {
         console.error('Error fetching libraries:', error);
@@ -39,18 +49,21 @@ const getLibraries = async (req, res) => {
             error: { message: error.message }
         });
     }
-}
+};
 
 const getLibrary = async (req, res) => {
     try {
-        const options = {
-            headers: { accept: 'application/json', AccessKey: process.env.API_KEY },
-        };
-        const data = await got.get(`${url}/${req.params.id}`, options).json();
+        const [rows] = await db.query(`SELECT id, name, description, pull_zone_url, pull_zone_id FROM ${tableName} WHERE name = ?`, [req.params.id]);
+        if (!rows || rows.length === 0) {
+            return res.status(409).json({
+                success: false,
+                message: `A library named '${req.params.id}' doesn't exist.`
+            });
+        }
         res.json({
             success: true,
             message: "Library fetched successfully.",
-            data
+            data: rows[0]
         });
     } catch (error) {
         console.error('Error fetching library:', error);
@@ -65,7 +78,7 @@ const getLibrary = async (req, res) => {
 const createLibrary = async (req, res) => {
     try {
         const { name, regions } = req.query;
-        const [rows] = await db.query(`SELECT * FROM ${tableName} WHERE name = ?`, [name]);
+        const [rows] = await db.query(`SELECT name FROM ${tableName} WHERE name = ?`, [name]);
         if (rows && rows.length > 0) {
             return res.status(409).json({
                 success: false,
@@ -88,7 +101,7 @@ const createLibrary = async (req, res) => {
             },
         };
         const pullZoneData = await got.get(`https://api.bunny.net/pullzone/${libraryData.PullZoneId}?includeCertificate=false`, pullZoneOptions).json();
-        await db.query(`INSERT INTO ${tableName}(name, description, api_key, read_only_api_key, id, pull_zone_id, pull_zone_url, pull_zone_security_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, [libraryData.Name, libraryData.Name, libraryData.ApiKey, libraryData.ReadOnlyApiKey, libraryData.ID, pullZoneData.ID, pullZoneData.Hostnames[0].Value, pullZoneData.ZoneSecurityKey]);
+        await db.query(`INSERT INTO ${tableName}(name, description, api_key, read_only_api_key, id, pull_zone_id, pull_zone_url, pull_zone_security_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, [libraryData.Name, libraryData.Name, libraryData.ApiKey, libraryData.ReadOnlyApiKey, libraryData.Id, pullZoneData.Id, pullZoneData.Hostnames[0].Value, pullZoneData.ZoneSecurityKey]);
         res.status(201).json({
             success: true,
             message: `Library '${name}' was created successfully.`
@@ -113,13 +126,34 @@ const getReplicationRegions = (req, res) => {
 
 const deleteLibrary = async (req, res) => {
     try {
+        const libraryName = req.params.id;
+        const [rows] = await db.query(`SELECT id FROM ${tableName} WHERE name = ?`, [libraryName]);
+        if (!rows || rows.length === 0) {
+            return res.status(409).json({
+                success: false,
+                message: `A library named '${libraryName}' doesn't exist.`
+            });
+        }
         const options = {
-            headers: { accept: 'application/json', AccessKey: process.env.API_KEY },
+            headers: {
+                accept: 'application/json',
+                AccessKey: process.env.API_KEY
+            },
         };
-        await got.delete(`${url}/${req.params.id}`, options);
+        await got.delete(`${url}/${rows[0].id}`, options);
+        const [result] = await db.query(
+            `DELETE FROM ${tableName} WHERE name = ?`,
+            [libraryName]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No library named '${libraryName}' found in the database.`
+            });
+        }
         res.json({
             success: true,
-            message: "Library deleted successfully."
+            message: `Library ${libraryName} deleted successfully.`
         });
     } catch (error) {
         console.error('Error deleting library:', error);
@@ -129,7 +163,8 @@ const deleteLibrary = async (req, res) => {
             error: { message: error.message }
         });
     }
-}
+};
+
 export {
     getLibraries,
     getLibrary,
