@@ -1,8 +1,18 @@
 services:
-  db:
-    image: mysql:lts
+  database:
+    image: mariadb:lts
     ports:
       - "3306:3306"
-    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: Passw0rd
+      MARIADB_ROOT_PASSWORD: Passw0rd
+  bunny-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bunny-stream:1.0.0
+    volumes:
+      - .:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - database
