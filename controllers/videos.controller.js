@@ -1,6 +1,5 @@
 import { got } from "got";
 import crypto from "node:crypto";
-import { Buffer } from "node:buffer";
 import getDb from "../database.js";
 
 const db = getDb();
@@ -195,63 +194,85 @@ const captionsList = [
 
 const getVideos = async (req, res) => {
     try {
-        const options = {
-            headers: { accept: 'application/json', AccessKey: process.env.LIBRARY_API_KEY },
-            searchParams: {
-                page: req.query.page || 1,
-                itemsPerPage: req.query.itemsPerPage || 10,
-                search: req.query.search || '',
-                collection: req.query.collection || '',
-                orderBy: req.query.orderBy || 'date'
-            }
-        };
-        const data = await got.get(`${url}/${req.query.libraryId}/videos`, options).json();
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        const [rows] = await db.query(
+            `SELECT guid, title, description, library_id, thumbnail_url 
+             FROM ${tableName} 
+             LIMIT ? OFFSET ?`,
+            [limit, offset]
+        );
+        const [countResult] = await db.query(`SELECT COUNT(*) as totalCount FROM ${tableName}`);
+        const totalCount = countResult[0].totalCount;
+
         res.json({
-            message: "Videos fetched successfully",
-            data
+            success: true,
+            message: "Videos fetched successfully.",
+            data: rows,
+            pagination: {
+                currentPage: page,
+                limit,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit)
+            }
         });
     } catch (error) {
-        console.error("Error fetching videos:", error);
+        console.error('Error fetching videos:', error);
         res.status(500).json({
-            message: "Failed to fetch videos",
-            error: error.message
+            success: false,
+            message: "Unable to fetch videos.",
+            error: { message: error.message }
         });
     }
 };
 
 const getVideo = async (req, res) => {
     try {
-        const options = {
-            headers: { accept: 'application/json', AccessKey: process.env.LIBRARY_API_KEY },
-        };
-        const data = await got.get(`${url}/${req.query.libraryId}/videos/${req.params.id}`, options).json();
+        const videoTitle = req.params.id;
+        const [rows] = await db.query(
+            `SELECT guid, title, description, library_id, thumbnail_url 
+             FROM ${tableName} 
+             WHERE title = ?`,
+            [videoTitle]
+        );
+        if (!rows || rows.length === 0) {
+            return res.status(409).json({
+                success: false,
+                message: `A video named '${videoTitle}' doesn't exist.`
+            });
+        }
         res.json({
-            message: "Video fetched successfully",
-            data
+            success: true,
+            message: "Video fetched successfully.",
+            data: rows[0]
         });
     } catch (error) {
-        console.error("Error fetching video:", error);
+        console.error('Error fetching video:', error);
         res.status(500).json({
-            message: "Failed to fetch video",
-            error: error.message
+            success: false,
+            message: "Unable to fetch the video.",
+            error: { message: error.message }
         });
     }
 };
 
 const getVideoURL = async (req, res) => {
     try {
-        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [req.params.id]);
+        const videoTitle = req.params.id;
+        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [videoTitle]);
         if (!rows || rows.length === 0) {
-            return res.status(404).json({ message: `Video ${req.params.id} not found in local DB` });
+            return res.status(404).json({ success: false, message: `Video ${videoTitle} not found in local DB` });
         }
         const { guid: videoID, library_id: libraryID } = rows[0];
         [rows] = await db.query('SELECT pull_zone_security_key, pull_zone_url FROM libraries WHERE id = ? LIMIT 1', [libraryID]);
         if (!rows || rows.length === 0) {
-            return res.status(404).json({ message: `Library not found for video ${req.params.id}` });
+            return res.status(404).json({ success: false, message: `Library not found for video ${videoTitle}` });
         }
         const { pull_zone_security_key: securityKey, pull_zone_url: pullZoneUrl } = rows[0];
         if (!securityKey || !pullZoneUrl) {
-            return res.status(500).json({ message: "Missing pull zone details for library" });
+            return res.status(500).json({ success: false, message: "Missing pull zone details for library" });
         }
         const expires = Math.floor(Date.now() / 1000) + 3600;
         const path = `/${videoID}/playlist.m3u8`;
@@ -260,32 +281,35 @@ const getVideoURL = async (req, res) => {
         token = token.replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
         const playUrl = `https://${pullZoneUrl}${path}?token=${token}&expires=${expires}`;
         res.json({
+            success: true,
             message: "Video URL fetched successfully",
             playUrl
         });
     } catch (error) {
         console.error("Error fetching video URL:", error);
         res.status(500).json({
+            success: false,
             message: "Failed to fetch video URL",
-            error: error.message
+            error: { message: error.message }
         });
     }
 };
 
 const getVideoThumbnailURL = async (req, res) => {
     try {
-        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [req.params.id]);
+        const videoTitle = req.params.id;
+        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [videoTitle]);
         if (!rows || rows.length === 0) {
-            return res.status(404).json({ message: `Video ${req.params.id} not found in local DB` });
+            return res.status(404).json({ success: false, message: `Video ${videoTitle} doesn't exist.` });
         }
         const { guid: videoID, library_id: libraryID } = rows[0];
         [rows] = await db.query('SELECT pull_zone_security_key, pull_zone_url FROM libraries WHERE id = ? LIMIT 1', [libraryID]);
         if (!rows || rows.length === 0) {
-            return res.status(404).json({ message: `Library not found for video ${req.params.id}` });
+            return res.status(404).json({ success: false, message: `Library not found for video ${videoTitle}` });
         }
         const { pull_zone_security_key: securityKey, pull_zone_url: pullZoneUrl } = rows[0];
         if (!securityKey || !pullZoneUrl) {
-            return res.status(500).json({ message: "Missing pull zone details for library" });
+            return res.status(500).json({ success: false, message: "Missing pull zone details for library" });
         }
         const expires = Math.floor(Date.now() / 1000) + 3600;
         const path = `/${videoID}/thumbnail.jpg`;
@@ -300,15 +324,16 @@ const getVideoThumbnailURL = async (req, res) => {
     } catch (error) {
         console.error("Error fetching video thumbnail URL:", error);
         res.status(500).json({
+            success: false,
             message: "Failed to fetch video thumbnail URL",
-            error: error.message
+            error: { message: error.message }
         });
     }
 };
 
 const createVideo = async (req, res) => {
     try {
-        const { libraryName, title, collectionId, thumbnailTime } = req.body;
+        const { videoTitle, title, collectionId, thumbnailTime } = req.body;
         let [rows] = await db.query(`SELECT * FROM ${tableName} WHERE title = ?`, [title]);
         if (rows && rows.length > 0) {
             return res.status(409).json({
@@ -318,10 +343,10 @@ const createVideo = async (req, res) => {
         }
         [rows] = await db.query(
             'SELECT api_key, id FROM libraries WHERE name = ? LIMIT 1',
-            [libraryName]
+            [videoTitle]
         );
         if (!rows || rows.length === 0) {
-            return res.status(404).json({ message: `Library ${libraryName} not found` });
+            return res.status(404).json({ message: `Library ${videoTitle} not found` });
         }
         const { id: libraryID, api_key: apiKey } = rows[0];
         const options = {
@@ -341,32 +366,54 @@ const createVideo = async (req, res) => {
     } catch (error) {
         console.error("Error creating video:", error);
         res.status(500).json({
+            success: false,
             message: "Failed to create video",
-            error: error.message
+            error: { message: error.message }
         });
     }
 };
 
 const deleteVideo = async (req, res) => {
     try {
+        const videoTitle = req.params.id;
+        const [rows] = await db.query(`SELECT guid, library_id FROM ${tableName} WHERE title = ?`, [videoTitle]);
+        if (!rows || rows.length === 0) {
+            return res.status(409).json({
+                success: false,
+                message: `A video named '${videoTitle}' doesn't exist.`
+            });
+        }
         const options = {
             headers: { accept: 'application/json', AccessKey: process.env.LIBRARY_API_KEY },
         };
-        await got.delete(`${url}/${req.query.libraryId}/videos/${req.params.id}`, options);
+        await got.delete(`${url}/${rows[0].library_id}/videos/${rows[0].guid}`, options);
+        const [result] = await db.query(
+            `DELETE FROM ${tableName} WHERE title = ?`,
+            [videoTitle]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No video named '${videoTitle}' found in the database.`
+            });
+        }
         res.json({
-            message: "Video deleted successfully"
+            success: true,
+            message: `Video ${videoTitle} deleted successfully.`
         });
     } catch (error) {
-        console.error("Error deleting video:", error);
+        console.error('Error deleting video:', error);
         res.status(500).json({
-            message: "Failed to delete video",
-            error: error.message
+            success: false,
+            message: "Unable to delete the video.",
+            error: { message: error.message }
         });
     }
 };
 
 const getCaptionsList = (req, res) => {
     res.json({
+        success: true,
         message: "Captions list fetched successfully",
         data: captionsList
     });
