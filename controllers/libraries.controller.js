@@ -53,11 +53,12 @@ const getLibraries = async (req, res) => {
 
 const getLibrary = async (req, res) => {
     try {
-        const [rows] = await db.query(`SELECT id, name, description, pull_zone_url, pull_zone_id FROM ${tableName} WHERE name = ?`, [req.params.id]);
+        const libraryName = req.params.id;
+        const [rows] = await db.query(`SELECT id, name, description, pull_zone_url, pull_zone_id FROM ${tableName} WHERE name = ?`, [libraryName]);
         if (!rows || rows.length === 0) {
             return res.status(409).json({
                 success: false,
-                message: `A library named '${req.params.id}' doesn't exist.`
+                message: `A library named '${libraryName}' doesn't exist.`
             });
         }
         res.json({
