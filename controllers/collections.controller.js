@@ -89,7 +89,7 @@ const createCollection = async (req, res) => {
                 message: `A collection named '${collectionName}' already exists.`
             });
         }
-        const [libraryRows] = await db.query(`SELECT id FROM ${librariesTableName} WHERE name = ?`, [libraryName]);
+        const [libraryRows] = await db.query(`SELECT id, api_key FROM ${librariesTableName} WHERE name = ?`, [libraryName]);
         if (!libraryRows || libraryRows.length === 0) {
             return res.status(409).json({
                 success: false,
@@ -100,9 +100,9 @@ const createCollection = async (req, res) => {
             headers: {
                 accept: 'application/json',
                 'content-type': 'application/json',
-                AccessKey: process.env.LIBRARY_API_KEY
+                AccessKey: libraryRows[0].api_key
             },
-            body: JSON.stringify({ name: req.body.name })
+            body: JSON.stringify({ name: collectionName })
         };
         const data = await got.post(`${url}/${libraryRows[0].id}/collections`, options).json();
         await db.query(`INSERT INTO ${collectionsTableName}(guid, name, library_id, description) VALUES(?, ?, ?, ?)`, [data.guid, collectionName, data.videoLibraryId, collectionName]);
@@ -128,14 +128,14 @@ const updateCollection = async (req, res) => {
                 message: "Both currentName and newName are required."
             });
         }
-        const [collectionRows] = await db.query(`SELECT guid, library_id FROM collections WHERE name = ?`, [currentName]);
+        const [collectionRows] = await db.query(`SELECT guid, library_id FROM ${collectionsTableName} WHERE name = ?`, [currentName]);
         if (!collectionRows || collectionRows.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: `Collection named '${currentName}' not found.`
             });
         }
-        const [libraryRows] = await db.query(`SELECT api_key FROM libraries WHERE id = ?`, [collectionRows[0].library_id]);
+        const [libraryRows] = await db.query(`SELECT api_key FROM ${librariesTableName} WHERE id = ?`, [collectionRows[0].library_id]);
         if (!libraryRows || libraryRows.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -150,8 +150,8 @@ const updateCollection = async (req, res) => {
             },
             body: JSON.stringify({ name: newName })
         };
-        const data = await got.post(`${url}/${collectionRows[0].library_id}/collections/${collectionRows[0].guid}`, options).json();
-        const [updateResult] = await db.query(`UPDATE collections SET name = ? WHERE id = ?`, [newName, collectionRows[0].guid]);
+        await got.post(`${url}/${collectionRows[0].library_id}/collections/${collectionRows[0].guid}`, options).json();
+        const [updateResult] = await db.query(`UPDATE collections SET name = ? WHERE guid = ?`, [newName, collectionRows[0].guid]);
         if (updateResult.affectedRows === 0) {
             return res.status(404).json({
                 success: false,
@@ -160,8 +160,7 @@ const updateCollection = async (req, res) => {
         }
         res.json({
             success: true,
-            message: `Collection name updated from '${currentName}' to '${newName}' successfully.`,
-            data
+            message: `Collection name updated from '${currentName}' to '${newName}' successfully.`
         });
     } catch (error) {
         console.error("Error updating collection:", error);
@@ -193,7 +192,14 @@ const deleteCollection = async (req, res) => {
         const options = {
             headers: { accept: 'application/json', AccessKey: libraryRows[0].api_key },
         };
-        await got.delete(`${url}/${collectionRows[0].library_id}/collections/${collectionRows[0].guid}`, options);
+        await db.query(`DELETE FROM ${collectionsTableName} WHERE guid = ?`, [collectionRows[0].guid]);
+        const [result] = await got.delete(`${url}/${collectionRows[0].library_id}/collections/${collectionRows[0].guid}`, options);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No library named '${libraryName}' found in the database.`
+            });
+        }
         res.json({
             success: true,
             message: `Collection '${collectionName}' deleted successfully`

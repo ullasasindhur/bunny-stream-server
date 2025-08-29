@@ -18,7 +18,7 @@ app.use('/collections', collectionsRoutes);
 app.use('/videos', videosRoutes);
 
 app.get("/", (req, res) => {
-  res.send("Welcome to Bunny Stream Server!");
+  res.json({ success: true, message: "Welcome to Bunny Stream Server!" });
 });
 
 app.listen(PORT, () => {
