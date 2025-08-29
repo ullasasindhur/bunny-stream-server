@@ -2,7 +2,7 @@ import express, { json } from "express";
 import librariesRoutes from "./routes/libraries.routes.js";
 import collectionsRoutes from "./routes/collections.routes.js";
 import videosRoutes from "./routes/videos.routes.js";
-import getDb from './database.js';
+import { getDb } from './database.js';
 import cors from 'cors';
 
 const app = express();

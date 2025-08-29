@@ -1,5 +1,5 @@
 import { got } from 'got';
-import getDb from '../database.js';
+import { getDb, librariesTableName } from '../database.js';
 const url = 'https://api.bunny.net/videolibrary'
 const replicationRegions = {
     "Frankfurt": "DE",
@@ -13,7 +13,6 @@ const replicationRegions = {
     "Johannesburg": "JH"
 };
 const db = getDb();
-const tableName = 'libraries';
 
 const getLibraries = async (req, res) => {
     try {
@@ -23,11 +22,11 @@ const getLibraries = async (req, res) => {
 
         const [rows] = await db.query(
             `SELECT id, name, description, pull_zone_url, pull_zone_id 
-             FROM ${tableName} 
+             FROM ${librariesTableName} 
              LIMIT ? OFFSET ?`,
             [limit, offset]
         );
-        const [countResult] = await db.query(`SELECT COUNT(*) as totalCount FROM ${tableName}`);
+        const [countResult] = await db.query(`SELECT COUNT(*) as totalCount FROM ${librariesTableName}`);
         const totalCount = countResult[0].totalCount;
 
         res.json({
@@ -54,7 +53,7 @@ const getLibraries = async (req, res) => {
 const getLibrary = async (req, res) => {
     try {
         const libraryName = req.params.id;
-        const [rows] = await db.query(`SELECT id, name, description, pull_zone_url, pull_zone_id FROM ${tableName} WHERE name = ?`, [libraryName]);
+        const [rows] = await db.query(`SELECT id, name, description, pull_zone_url, pull_zone_id FROM ${librariesTableName} WHERE name = ?`, [libraryName]);
         if (!rows || rows.length === 0) {
             return res.status(409).json({
                 success: false,
@@ -79,7 +78,7 @@ const getLibrary = async (req, res) => {
 const createLibrary = async (req, res) => {
     try {
         const { name, regions } = req.query;
-        const [rows] = await db.query(`SELECT name FROM ${tableName} WHERE name = ?`, [name]);
+        const [rows] = await db.query(`SELECT name FROM ${librariesTableName} WHERE name = ?`, [name]);
         if (rows && rows.length > 0) {
             return res.status(409).json({
                 success: false,
@@ -102,7 +101,7 @@ const createLibrary = async (req, res) => {
             },
         };
         const pullZoneData = await got.get(`https://api.bunny.net/pullzone/${libraryData.PullZoneId}?includeCertificate=false`, pullZoneOptions).json();
-        await db.query(`INSERT INTO ${tableName}(name, description, api_key, read_only_api_key, id, pull_zone_id, pull_zone_url, pull_zone_security_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, [libraryData.Name, libraryData.Name, libraryData.ApiKey, libraryData.ReadOnlyApiKey, libraryData.Id, pullZoneData.Id, pullZoneData.Hostnames[0].Value, pullZoneData.ZoneSecurityKey]);
+        await db.query(`INSERT INTO ${librariesTableName}(name, description, api_key, read_only_api_key, id, pull_zone_id, pull_zone_url, pull_zone_security_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, [libraryData.Name, libraryData.Name, libraryData.ApiKey, libraryData.ReadOnlyApiKey, libraryData.Id, pullZoneData.Id, pullZoneData.Hostnames[0].Value, pullZoneData.ZoneSecurityKey]);
         res.status(201).json({
             success: true,
             message: `Library '${name}' was created successfully.`
@@ -128,7 +127,7 @@ const getReplicationRegions = (req, res) => {
 const deleteLibrary = async (req, res) => {
     try {
         const libraryName = req.params.id;
-        const [rows] = await db.query(`SELECT id FROM ${tableName} WHERE name = ?`, [libraryName]);
+        const [rows] = await db.query(`SELECT id FROM ${librariesTableName} WHERE name = ?`, [libraryName]);
         if (!rows || rows.length === 0) {
             return res.status(409).json({
                 success: false,
@@ -143,7 +142,7 @@ const deleteLibrary = async (req, res) => {
         };
         await got.delete(`${url}/${rows[0].id}`, options);
         const [result] = await db.query(
-            `DELETE FROM ${tableName} WHERE name = ?`,
+            `DELETE FROM ${librariesTableName} WHERE name = ?`,
             [libraryName]
         );
         if (result.affectedRows === 0) {

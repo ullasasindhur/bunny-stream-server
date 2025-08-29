@@ -1,5 +1,12 @@
 import mysql from 'mysql2/promise';
 
+const librariesTableName = 'libraries';
+const videosTableName = 'videos';
+const collectionsTableName = 'collections';
+const collectionVideosTableName = 'collection_videos';
+const genresTableName = 'genres';
+const videoGenresTableName = 'video_genres';
+
 const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
 
 if (!DB_HOST || !DB_USER || !DB_PASSWORD || !DB_NAME) {
@@ -31,7 +38,7 @@ async function initializeDatabase() {
     });
 
     await db.query(`
-      CREATE TABLE IF NOT EXISTS libraries (
+      CREATE TABLE IF NOT EXISTS ${librariesTableName} (
         id INT PRIMARY KEY,
         name VARCHAR(255) NOT NULL UNIQUE,
         description TEXT,
@@ -41,10 +48,11 @@ async function initializeDatabase() {
         pull_zone_url VARCHAR(255) NOT NULL,
         pull_zone_security_key VARCHAR(64) NOT NULL UNIQUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_library_name (name)
       );
 
-      CREATE TABLE IF NOT EXISTS videos (
+      CREATE TABLE IF NOT EXISTS ${videosTableName} (
         guid VARCHAR(36) PRIMARY KEY,
         library_id INT NOT NULL,
         title VARCHAR(255) NOT NULL UNIQUE,
@@ -52,26 +60,53 @@ async function initializeDatabase() {
         thumbnail_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
+        FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE ON UPDATE CASCADE,
         INDEX idx_library_id (library_id)
       );
 
-      CREATE TABLE IF NOT EXISTS genres (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(100) NOT NULL UNIQUE,
-        slug VARCHAR(100) NOT NULL UNIQUE
+      CREATE TABLE IF NOT EXISTS ${collectionsTableName} (
+        guid VARCHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        library_id INT NOT NULL,
+        thumbnail_url TEXT,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE ON UPDATE CASCADE,
+        INDEX idx_library_id (library_id),
+        INDEX idx_collection_name (name)
       );
 
-      CREATE TABLE IF NOT EXISTS video_genres (
+      CREATE TABLE IF NOT EXISTS ${collectionVideosTableName} (
+        collection_guid VARCHAR(36) NOT NULL,
+        video_guid VARCHAR(36) NOT NULL,
+        PRIMARY KEY (collection_guid, video_guid),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (collection_guid) REFERENCES collections(guid) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (video_guid) REFERENCES videos(guid) ON DELETE CASCADE ON UPDATE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS ${genresTableName} (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        slug VARCHAR(100) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS ${videoGenresTableName} (
         video_guid VARCHAR(36) NOT NULL,
         genre_id INT NOT NULL,
         PRIMARY KEY (video_guid, genre_id),
-        FOREIGN KEY (video_guid) REFERENCES videos(guid) ON DELETE CASCADE,
-        FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (video_guid) REFERENCES videos(guid) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE ON UPDATE CASCADE,
         INDEX idx_genre_id (genre_id)
       );
 
-      INSERT IGNORE INTO genres (name, slug) VALUES
+      INSERT IGNORE INTO ${genresTableName} (name, slug) VALUES
         ('Action', 'action'),
         ('Adventure', 'adventure'),
         ('Animation', 'animation'),
@@ -102,6 +137,16 @@ async function initializeDatabase() {
 
 await initializeDatabase();
 
-export default function getDb() {
+function getDb() {
   return db;
 }
+
+export {
+  librariesTableName,
+  videosTableName,
+  collectionVideosTableName,
+  collectionsTableName,
+  genresTableName,
+  videoGenresTableName,
+  getDb
+};
