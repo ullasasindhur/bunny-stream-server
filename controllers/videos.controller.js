@@ -1,9 +1,8 @@
 import { got } from "got";
 import crypto from "node:crypto";
-import getDb from "../database.js";
+import { getDb, videosTableName, librariesTableName } from "../database.js";
 
 const db = getDb();
-const tableName = "videos";
 const url = 'https://video.bunnycdn.com/library';
 const captionsList = [
     { "code": "aa", "name": "Afar" },
@@ -200,11 +199,11 @@ const getVideos = async (req, res) => {
 
         const [rows] = await db.query(
             `SELECT guid, title, description, library_id, thumbnail_url 
-             FROM ${tableName} 
+             FROM ${videosTableName} 
              LIMIT ? OFFSET ?`,
             [limit, offset]
         );
-        const [countResult] = await db.query(`SELECT COUNT(*) as totalCount FROM ${tableName}`);
+        const [countResult] = await db.query(`SELECT COUNT(*) as totalCount FROM ${videosTableName}`);
         const totalCount = countResult[0].totalCount;
 
         res.json({
@@ -233,7 +232,7 @@ const getVideo = async (req, res) => {
         const videoTitle = req.params.id;
         const [rows] = await db.query(
             `SELECT guid, title, description, library_id, thumbnail_url 
-             FROM ${tableName} 
+             FROM ${videosTableName} 
              WHERE title = ?`,
             [videoTitle]
         );
@@ -261,12 +260,12 @@ const getVideo = async (req, res) => {
 const getVideoURL = async (req, res) => {
     try {
         const videoTitle = req.params.id;
-        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [videoTitle]);
+        let [rows] = await db.query(`SELECT guid, library_id FROM ${videosTableName} WHERE title = ?`, [videoTitle]);
         if (!rows || rows.length === 0) {
             return res.status(404).json({ success: false, message: `Video ${videoTitle} not found in local DB` });
         }
         const { guid: videoID, library_id: libraryID } = rows[0];
-        [rows] = await db.query('SELECT pull_zone_security_key, pull_zone_url FROM libraries WHERE id = ? LIMIT 1', [libraryID]);
+        [rows] = await db.query(`SELECT pull_zone_security_key, pull_zone_url FROM ${librariesTableName} WHERE id = ?`, [libraryID]);
         if (!rows || rows.length === 0) {
             return res.status(404).json({ success: false, message: `Library not found for video ${videoTitle}` });
         }
@@ -298,12 +297,12 @@ const getVideoURL = async (req, res) => {
 const getVideoThumbnailURL = async (req, res) => {
     try {
         const videoTitle = req.params.id;
-        let [rows] = await db.query('SELECT guid, library_id FROM videos WHERE title = ? LIMIT 1', [videoTitle]);
+        let [rows] = await db.query(`SELECT guid, library_id FROM ${videosTableName} WHERE title = ?`, [videoTitle]);
         if (!rows || rows.length === 0) {
             return res.status(404).json({ success: false, message: `Video ${videoTitle} doesn't exist.` });
         }
         const { guid: videoID, library_id: libraryID } = rows[0];
-        [rows] = await db.query('SELECT pull_zone_security_key, pull_zone_url FROM libraries WHERE id = ? LIMIT 1', [libraryID]);
+        [rows] = await db.query(`SELECT pull_zone_security_key, pull_zone_url FROM ${librariesTableName} WHERE id = ?`, [libraryID]);
         if (!rows || rows.length === 0) {
             return res.status(404).json({ success: false, message: `Library not found for video ${videoTitle}` });
         }
@@ -318,6 +317,7 @@ const getVideoThumbnailURL = async (req, res) => {
         token = token.replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
         const thumbnailUrl = `https://${pullZoneUrl}${path}?token=${token}&expires=${expires}`;
         res.json({
+            success: true,
             message: "Video thumbnail URL fetched successfully",
             thumbnailUrl
         });
@@ -333,8 +333,8 @@ const getVideoThumbnailURL = async (req, res) => {
 
 const createVideo = async (req, res) => {
     try {
-        const { videoTitle, title, collectionId, thumbnailTime } = req.body;
-        let [rows] = await db.query(`SELECT * FROM ${tableName} WHERE title = ?`, [title]);
+        const { libraryName, title, collectionId, thumbnailTime } = req.body;
+        let [rows] = await db.query(`SELECT * FROM ${videosTableName} WHERE title = ?`, [title]);
         if (rows && rows.length > 0) {
             return res.status(409).json({
                 success: false,
@@ -342,11 +342,11 @@ const createVideo = async (req, res) => {
             });
         }
         [rows] = await db.query(
-            'SELECT api_key, id FROM libraries WHERE name = ? LIMIT 1',
-            [videoTitle]
+            `SELECT api_key, id FROM ${librariesTableName} WHERE name = ?`,
+            [libraryName]
         );
         if (!rows || rows.length === 0) {
-            return res.status(404).json({ message: `Library ${videoTitle} not found` });
+            return res.status(404).json({ success: false, message: `Library ${libraryName} not found` });
         }
         const { id: libraryID, api_key: apiKey } = rows[0];
         const options = {
@@ -358,9 +358,10 @@ const createVideo = async (req, res) => {
             body: JSON.stringify({ title, collectionId: collectionId || '', thumbnailTime: thumbnailTime || 0 }),
         };
         const data = await got.post(`${url}/${libraryID}/videos`, options).json();
-        const insertQuery = 'INSERT INTO videos (guid, library_id, title, description) VALUES (?, ?, ?, ?)';
+        const insertQuery = `INSERT INTO ${videosTableName} (guid, library_id, title, description) VALUES (?, ?, ?, ?)`;
         await db.query(insertQuery, [data.guid, libraryID, title, title]);
-        res.status(200).json({
+        res.status(201).json({
+            success: true,
             message: `Video ${title} created successfully`
         });
     } catch (error) {
@@ -376,19 +377,26 @@ const createVideo = async (req, res) => {
 const deleteVideo = async (req, res) => {
     try {
         const videoTitle = req.params.id;
-        const [rows] = await db.query(`SELECT guid, library_id FROM ${tableName} WHERE title = ?`, [videoTitle]);
+        const [rows] = await db.query(`SELECT guid, library_id FROM ${videosTableName} WHERE title = ?`, [videoTitle]);
         if (!rows || rows.length === 0) {
             return res.status(409).json({
                 success: false,
                 message: `A video named '${videoTitle}' doesn't exist.`
             });
         }
+        const [libraryRows] = await db.query(`SELECT api_key FROM ${librariesTableName} WHERE id = ?`, [rows[0].library_id]);
+        if (!libraryRows || libraryRows.length === 0) {
+            return res.status(409).json({
+                success: false,
+                message: `Video '${videoTitle}' isn't part of any existing library.`
+            });
+        }
         const options = {
-            headers: { accept: 'application/json', AccessKey: process.env.LIBRARY_API_KEY },
+            headers: { accept: 'application/json', AccessKey: libraryRows[0].api_key },
         };
         await got.delete(`${url}/${rows[0].library_id}/videos/${rows[0].guid}`, options);
         const [result] = await db.query(
-            `DELETE FROM ${tableName} WHERE title = ?`,
+            `DELETE FROM ${videosTableName} WHERE title = ?`,
             [videoTitle]
         );
         if (result.affectedRows === 0) {
