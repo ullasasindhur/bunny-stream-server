@@ -1,12 +1,14 @@
 services:
   database:
-    image: mariadb:lts
+    image: postgres:alpine
     ports:
-      - "3306:3306"
+      - '5432:5432'
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     healthcheck:
-      test: [ "CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "--password=${DB_PASSWORD}" ]
+      test: ['CMD-SHELL', 'PGPASSWORD=${DB_PASSWORD} pg_isready -h localhost -U ${DB_USER}']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,7 +24,7 @@ services:
         target: /app
       - /app/node_modules
     ports:
-      - "3000:3000"
+      - '3000:3000'
     depends_on:
       database:
         condition: service_healthy

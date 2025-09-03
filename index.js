@@ -1,7 +1,5 @@
-import express, { json } from "express";
-import librariesRoutes from "./routes/libraries.routes.js";
-import collectionsRoutes from "./routes/collections.routes.js";
-import videosRoutes from "./routes/videos.routes.js";
+import express, { json } from 'express';
+import videosRoutes from './routes/videos.routes.js';
 import { getDb } from './database.js';
 import cors from 'cors';
 
@@ -13,12 +11,10 @@ app.use(cors());
 
 app.use(json());
 
-app.use('/libraries', librariesRoutes);
-app.use('/collections', collectionsRoutes);
 app.use('/videos', videosRoutes);
 
-app.get("/", (req, res) => {
-  res.json({ success: true, message: "Welcome to Bunny Stream Server!" });
+app.get('/', (req, res) => {
+  res.json({ success: true, message: 'Welcome to Bunny Stream Server!' });
 });
 
 app.listen(PORT, () => {
