@@ -34,6 +34,7 @@ async function initializeDatabase() {
         description TEXT,
         thumbnail_url TEXT,
         genres JSONB DEFAULT '[]'::jsonb NOT NULL,
+        category VARCHAR(10) NOT NULL DEFAULT 'movie' CHECK (category IN ('movie', 'shorts')),
         created_at timestamptz DEFAULT now() NOT NULL
     );
 
