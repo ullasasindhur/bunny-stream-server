@@ -1,15 +1,14 @@
 import pg from 'pg';
 const { Pool } = pg;
-const videosTableName = 'videos';
-
-const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT } = process.env;
-
-if (!DB_HOST || !DB_USER || !DB_PASSWORD || !DB_NAME || !DB_PORT) {
-  console.error(
-    'Missing DB env vars. Ensure DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT are set.'
-  );
-  process.exit(1);
-}
+import {
+  DB_HOST,
+  DB_NAME,
+  DB_PASSWORD,
+  DB_PORT,
+  DB_USER,
+  videosTableName,
+  usersTableName
+} from './constants/common.js';
 
 const dbConfig = {
   host: DB_HOST,
@@ -38,6 +37,17 @@ async function initializeDatabase() {
         created_at timestamptz DEFAULT now() NOT NULL
     );
 
+    CREATE EXTENSION IF NOT EXISTS citext;
+
+    CREATE TABLE IF NOT EXISTS ${usersTableName} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      username VARCHAR(50) UNIQUE NOT NULL,
+      email CITEXT UNIQUE NOT NULL,
+      password_hash TEXT,
+      full_name VARCHAR(100),
+      google_id TEXT UNIQUE
+    );  
+
     CREATE INDEX IF NOT EXISTS idx_videos_genres ON ${videosTableName} USING GIN (genres jsonb_path_ops);
   `);
     console.log('✅ Database and tables are ready.');
@@ -53,4 +63,4 @@ function getDb() {
   return db;
 }
 
-export { videosTableName, getDb };
+export { getDb };

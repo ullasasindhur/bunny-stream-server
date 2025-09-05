@@ -1,6 +1,7 @@
 import { got } from 'got';
 import crypto from 'node:crypto';
-import { getDb, videosTableName } from '../database.js';
+import { getDb } from '../database.js';
+import { videosTableName } from '../constants/common.js';
 import captions from '../constants/captions.js';
 import {
   LIBRARY_API_KEY,
