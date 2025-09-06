@@ -9,14 +9,6 @@ import {
   DB_USER,
   usersTableName
 } from './constants/common.js';
-const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT } = process.env;
-
-if (!DB_HOST || !DB_USER || !DB_PASSWORD || !DB_NAME || !DB_PORT) {
-  console.error(
-    'Missing DB env vars. Ensure DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT are set.'
-  );
-  process.exit(1);
-}
 
 const dbConfig = {
   host: DB_HOST,

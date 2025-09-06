@@ -57,7 +57,7 @@ const getVideo = async (req, res) => {
     const videoId = req.params.id;
 
     const query = `
-      SELECT guid, title, description, thumbnail_url, category, genres
+      SELECT guid, title, description, "thumbnailUrl", category, genres
       FROM ${tables.VIDEOS}
       WHERE guid = $1
     `;
@@ -99,10 +99,10 @@ const getVideosByGenre = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const videoQuery = `
-      SELECT guid, title, description, thumbnail_url, category, genres
+      SELECT guid, title, description, "thumbnailUrl", category, genres
       FROM ${tables.VIDEOS}
       WHERE genres @> $1::jsonb
-      ORDER BY created_at DESC
+      ORDER BY "createdAt" DESC
       LIMIT $2 OFFSET $3
     `;
     const countQuery = `
@@ -393,6 +393,41 @@ const getCaptionsList = (req, res) => {
   });
 };
 
+const globalSearch = async (req, res) => {
+  try {
+    const queryParam = req.query.q;
+    if (!queryParam) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required.'
+      });
+    }
+
+    const searchQuery = `
+    SELECT * FROM videos
+    WHERE LOWER(title) LIKE LOWER($1)
+       OR EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements_text(tags) AS tag
+           WHERE LOWER(tag) LIKE LOWER($1)
+       );    
+    `;
+    const { rows } = await db.query(searchQuery, [`%${queryParam}%`]);
+
+    res.json({
+      success: true,
+      message: 'Search results fetched successfully.',
+      data: rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to search videos.',
+      error: { message: error.message }
+    });
+  }
+};
+
 export {
   getVideos,
   getVideo,
@@ -402,5 +437,6 @@ export {
   getCaptionsList,
   getVideoURL,
   getVideoThumbnailURL,
-  getVideosByGenre
+  getVideosByGenre,
+  globalSearch
 };
