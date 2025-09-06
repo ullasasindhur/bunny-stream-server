@@ -1,7 +1,6 @@
 import { got } from 'got';
 import crypto from 'node:crypto';
 import { getDb } from '../database.js';
-import { videosTableName } from '../constants/common.js';
 import captions from '../constants/captions.js';
 import {
   LIBRARY_API_KEY,
@@ -9,6 +8,7 @@ import {
   PULLZONE_API_KEY,
   PULLZONE_URL
 } from '../constants/common.js';
+import { tables, videoStatus } from '../constants/db.js';
 
 const db = getDb();
 const url = 'https://video.bunnycdn.com/library';
@@ -17,15 +17,16 @@ const getVideos = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit) || 10, 1);
+    const status = req.query.status || videoStatus.PUBLISHED;
     const offset = (page - 1) * limit;
+    const table = status === videoStatus.PENDING ? tables.PENDING_VIDEOS : tables.PUBLISHED_VIDEOS;
 
     const videoQuery = `
-      SELECT guid, title, description, thumbnail_url, category, genres
-      FROM ${videosTableName}
-      ORDER BY created_at DESC
+      SELECT * FROM ${table}
+      ORDER BY "createdAt" DESC
       LIMIT $1 OFFSET $2
     `;
-    const countQuery = `SELECT COUNT(*) AS total_count FROM ${videosTableName}`;
+    const countQuery = `SELECT COUNT(*) AS total_count FROM ${table}`;
 
     const { rows: videos } = await db.query(videoQuery, [limit, offset]);
     const { rows: countRows } = await db.query(countQuery);
@@ -57,7 +58,7 @@ const getVideo = async (req, res) => {
 
     const query = `
       SELECT guid, title, description, thumbnail_url, category, genres
-      FROM ${videosTableName}
+      FROM ${tables.VIDEOS}
       WHERE guid = $1
     `;
     const { rows } = await db.query(query, [videoId]);
@@ -99,14 +100,14 @@ const getVideosByGenre = async (req, res) => {
 
     const videoQuery = `
       SELECT guid, title, description, thumbnail_url, category, genres
-      FROM ${videosTableName}
+      FROM ${tables.VIDEOS}
       WHERE genres @> $1::jsonb
       ORDER BY created_at DESC
       LIMIT $2 OFFSET $3
     `;
     const countQuery = `
       SELECT COUNT(*) AS total_count
-      FROM ${videosTableName}
+      FROM ${tables.VIDEOS}
       WHERE genres @> $1::jsonb
     `;
 
@@ -140,7 +141,7 @@ const getVideoURL = async (req, res) => {
 
     const videoQuery = `
       SELECT guid
-      FROM ${videosTableName}
+      FROM ${tables.VIDEOS}
       WHERE guid = $1
     `;
     const { rows: videoRows } = await db.query(videoQuery, [videoId]);
@@ -180,7 +181,7 @@ const getVideoThumbnailURL = async (req, res) => {
 
     const videoQuery = `
       SELECT guid
-      FROM ${videosTableName}
+      FROM ${tables.VIDEOS}
       WHERE title = $1
     `;
     const { rows: videoRows } = await db.query(videoQuery, [videoTitle]);
@@ -216,43 +217,43 @@ const getVideoThumbnailURL = async (req, res) => {
 
 const createVideo = async (req, res) => {
   try {
-    const { title, description, genres, collectionId, thumbnailTime } = req.body;
+    const { title, category, collectionId, thumbnailTime, description, tags, genres, status } =
+      req.body;
 
-    const checkQuery = `SELECT 1 FROM ${videosTableName} WHERE title = $1`;
-    const { rows: existing } = await db.query(checkQuery, [title]);
-    if (existing.length > 0) {
-      return res.status(409).json({
-        success: false,
-        message: `A video titled '${title}' already exists.`
-      });
-    }
-
-    const options = {
-      headers: {
-        accept: 'application/json',
-        AccessKey: LIBRARY_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        title,
-        collectionId: collectionId || '',
-        thumbnailTime: thumbnailTime || 0
+    // Create virtual video
+    const data = await got
+      .post(`${url}/${LIBRARY_ID}/videos`, {
+        headers: {
+          accept: 'application/json',
+          AccessKey: LIBRARY_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title,
+          collectionId: collectionId || '',
+          thumbnailTime: thumbnailTime || 0
+        })
       })
-    };
+      .json();
 
-    const data = await got.post(`${url}/${LIBRARY_ID}/videos`, options).json();
+    // Add record in db
+    await db.query(
+      `
+      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres")
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+    `,
+      [
+        data.guid,
+        title,
+        description,
+        JSON.stringify(tags || []),
+        category,
+        status,
+        JSON.stringify(genres || [])
+      ]
+    );
 
-    const insertQuery = `
-      INSERT INTO ${videosTableName} (guid, title, description, genres)
-      VALUES ($1, $2, $3, $4::jsonb)
-    `;
-    await db.query(insertQuery, [
-      data.guid,
-      title,
-      description || null,
-      JSON.stringify(genres || [])
-    ]);
-
+    // Generate tokens required to upload video
     const expire = Math.floor(Date.now() / 1000) + 600;
     const raw = `${LIBRARY_ID}${LIBRARY_API_KEY}${expire}${data.guid}`;
     const hash = crypto.createHash('sha256').update(raw).digest('hex');
@@ -275,13 +276,74 @@ const createVideo = async (req, res) => {
   }
 };
 
+const updatevideo = async (req, res) => {
+  try {
+    const { guid, category, title, thumbnailUrl, description, tags, genres, status } = req.body;
+
+    if (!guid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Video GUID is required.'
+      });
+    }
+
+    // Check if video exists
+    const checkQuery = `SELECT guid FROM ${tables.VIDEOS} WHERE guid = $1`;
+    const { rows: existingRows } = await db.query(checkQuery, [guid]);
+
+    if (existingRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found.'
+      });
+    }
+
+    // Update video draft
+    const updateQuery = `
+      UPDATE ${tables.VIDEOS}
+      SET
+        "category" = COALESCE($2, "category"),
+        "title" = COALESCE($3, "title"),
+        "thumbnailUrl" = COALESCE($4, "thumbnailUrl"),
+        "description" = COALESCE($5, "description"),
+        "tags" = COALESCE($6, "tags"),
+        "genres" = COALESCE($7, "genres"),
+        "status" = COALESCE($8, "status"),
+        "modifiedAt" = NOW()
+      WHERE "guid" = $1
+    `;
+
+    await db.query(updateQuery, [
+      guid,
+      category,
+      title,
+      thumbnailUrl,
+      description,
+      tags ? JSON.stringify(tags) : null,
+      genres ? JSON.stringify(genres) : null,
+      status
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Video draft saved successfully.'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save video draft.',
+      error: { message: error.message }
+    });
+  }
+};
+
 const deleteVideo = async (req, res) => {
   try {
     const videoTitle = req.params.id;
 
     const videoQuery = `
       SELECT guid
-      FROM ${videosTableName}
+      FROM ${tables.VIDEOS}
       WHERE title = $1
     `;
     const { rows: videoRows } = await db.query(videoQuery, [videoTitle]);
@@ -301,7 +363,7 @@ const deleteVideo = async (req, res) => {
 
     await got.delete(`${url}/${LIBRARY_ID}/videos/${videoRows[0].guid}`, options);
 
-    const deleteQuery = `DELETE FROM ${videosTableName} WHERE title = $1`;
+    const deleteQuery = `DELETE FROM ${tables.VIDEOS} WHERE title = $1`;
     const { rowCount } = await db.query(deleteQuery, [videoTitle]);
     if (rowCount === 0) {
       return res.status(404).json({
@@ -335,6 +397,7 @@ export {
   getVideos,
   getVideo,
   createVideo,
+  updatevideo,
   deleteVideo,
   getCaptionsList,
   getVideoURL,

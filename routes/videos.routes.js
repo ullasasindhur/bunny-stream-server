@@ -7,7 +7,8 @@ import {
   getCaptionsList,
   getVideoURL,
   getVideoThumbnailURL,
-  getVideosByGenre
+  getVideosByGenre,
+  updatevideo
 } from '../controllers/videos.controller.js';
 
 const router = Router();
@@ -20,5 +21,6 @@ router.get('/:id/url', getVideoURL);
 router.get('/:id/thumbnail', getVideoThumbnailURL);
 router.post('/', createVideo);
 router.delete('/:id', deleteVideo);
+router.put('/', updatevideo);
 
 export default router;
