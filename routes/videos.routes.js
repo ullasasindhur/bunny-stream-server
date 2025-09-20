@@ -5,8 +5,6 @@ import {
   createVideo,
   deleteVideo,
   getCaptionsList,
-  getVideoURL,
-  getVideoThumbnailURL,
   getVideosByGenre,
   updatevideo,
   globalSearch
@@ -19,10 +17,8 @@ router.get('/search', globalSearch);
 router.get('/captions-list', getCaptionsList);
 router.get('/genre', getVideosByGenre);
 router.get('/:id', getVideo);
-router.get('/:id/url', getVideoURL);
-router.get('/:id/thumbnail', getVideoThumbnailURL);
 router.post('/', createVideo);
 router.delete('/:id', deleteVideo);
-router.put('/', updatevideo);
+router.patch('/:id', updatevideo);
 
 export default router;

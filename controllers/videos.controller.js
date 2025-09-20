@@ -2,13 +2,10 @@ import { got } from 'got';
 import crypto from 'node:crypto';
 import { getDb } from '../database.js';
 import captions from '../constants/captions.js';
-import {
-  LIBRARY_API_KEY,
-  LIBRARY_ID,
-  PULLZONE_API_KEY,
-  PULLZONE_URL
-} from '../constants/common.js';
+import { LIBRARY_API_KEY, LIBRARY_ID } from '../constants/common.js';
 import { tables, videoStatus } from '../constants/db.js';
+import { bunnyClient } from '../config/bunnyClient.js';
+import { getVideoUploadTokens } from '../utils/video.js';
 
 const db = getDb();
 const url = 'https://video.bunnycdn.com/library';
@@ -57,7 +54,7 @@ const getVideo = async (req, res) => {
     const videoId = req.params.id;
 
     const query = `
-      SELECT guid, title, description, "thumbnailUrl", category, genres
+      SELECT *
       FROM ${tables.VIDEOS}
       WHERE guid = $1
     `;
@@ -69,11 +66,13 @@ const getVideo = async (req, res) => {
         message: `A video doesn't exist.`
       });
     }
+    const response = await bunnyClient.get(`videos/${videoId}`);
+    const { category, title, description } = rows[0] || {};
 
     res.json({
       success: true,
       message: 'Video fetched successfully.',
-      data: rows[0]
+      data: { ...rows[0], ...response.body, category, title, description }
     });
   } catch (error) {
     res.status(500).json({
@@ -99,7 +98,7 @@ const getVideosByGenre = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const videoQuery = `
-      SELECT guid, title, description, "thumbnailUrl", category, genres
+      SELECT guid, title, description, "thumbnailFileName", category, genres
       FROM ${tables.VIDEOS}
       WHERE genres @> $1::jsonb
       ORDER BY "createdAt" DESC
@@ -134,87 +133,6 @@ const getVideosByGenre = async (req, res) => {
     });
   }
 };
-
-const getVideoURL = async (req, res) => {
-  try {
-    const videoId = req.params.id;
-
-    const videoQuery = `
-      SELECT guid
-      FROM ${tables.VIDEOS}
-      WHERE guid = $1
-    `;
-    const { rows: videoRows } = await db.query(videoQuery, [videoId]);
-    if (videoRows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Video ${videoId} is not available.`
-      });
-    }
-
-    const videoID = videoRows[0].guid;
-
-    const expires = Math.floor(Date.now() / 1000) + 3600;
-    const path = `/${videoID}/playlist.m3u8`;
-    const hashableBase = PULLZONE_API_KEY + path + expires;
-    let token = crypto.createHash('sha256').update(hashableBase).digest('base64');
-    token = token.replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
-    const playUrl = `https://${PULLZONE_URL}${path}?token=${token}&expires=${expires}`;
-
-    res.json({
-      success: true,
-      message: 'Video URL fetched successfully.',
-      playUrl
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch video URL.',
-      error: { message: error.message }
-    });
-  }
-};
-
-const getVideoThumbnailURL = async (req, res) => {
-  try {
-    const videoTitle = req.params.id;
-
-    const videoQuery = `
-      SELECT guid
-      FROM ${tables.VIDEOS}
-      WHERE title = $1
-    `;
-    const { rows: videoRows } = await db.query(videoQuery, [videoTitle]);
-    if (videoRows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Video ${videoTitle} doesn't exist.`
-      });
-    }
-
-    const videoID = videoRows[0].guid;
-
-    const expires = Math.floor(Date.now() / 1000) + 3600;
-    const path = `/${videoID}/thumbnail.jpg`;
-    const hashableBase = PULLZONE_API_KEY + path + expires;
-    let token = crypto.createHash('sha256').update(hashableBase).digest('base64');
-    token = token.replace(/\+/g, '-').replace(/\//g, '_').replace(/\=/g, '');
-    const thumbnailUrl = `https://${PULLZONE_URL}${path}?token=${token}&expires=${expires}`;
-
-    res.json({
-      success: true,
-      message: 'Video thumbnail URL fetched successfully',
-      thumbnailUrl
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch video thumbnail URL',
-      error: { message: error.message }
-    });
-  }
-};
-
 const createVideo = async (req, res) => {
   try {
     const { title, category, collectionId, thumbnailTime, description, tags, genres, status } =
@@ -254,17 +172,14 @@ const createVideo = async (req, res) => {
     );
 
     // Generate tokens required to upload video
-    const expire = Math.floor(Date.now() / 1000) + 600;
-    const raw = `${LIBRARY_ID}${LIBRARY_API_KEY}${expire}${data.guid}`;
-    const hash = crypto.createHash('sha256').update(raw).digest('hex');
+    const tokens = getVideoUploadTokens(data.guid);
 
     res.status(201).json({
       success: true,
       message: `Video ${title} created successfully`,
       data: {
         ...data,
-        AuthorizationSignature: hash,
-        AuthorizationExpire: expire
+        ...tokens
       }
     });
   } catch (error) {
@@ -278,18 +193,12 @@ const createVideo = async (req, res) => {
 
 const updatevideo = async (req, res) => {
   try {
-    const { guid, category, title, thumbnailUrl, description, tags, genres, status } = req.body;
-
-    if (!guid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Video GUID is required.'
-      });
-    }
+    const videoId = req.params.id;
+    const { category, title, thumbnailFileName, description, tags, genres, status, version } = req.body;
 
     // Check if video exists
     const checkQuery = `SELECT guid FROM ${tables.VIDEOS} WHERE guid = $1`;
-    const { rows: existingRows } = await db.query(checkQuery, [guid]);
+    const { rows: existingRows } = await db.query(checkQuery, [videoId]);
 
     if (existingRows.length === 0) {
       return res.status(404).json({
@@ -304,29 +213,35 @@ const updatevideo = async (req, res) => {
       SET
         "category" = COALESCE($2, "category"),
         "title" = COALESCE($3, "title"),
-        "thumbnailUrl" = COALESCE($4, "thumbnailUrl"),
+        "thumbnailFileName" = COALESCE($4, "thumbnailFileName"),
         "description" = COALESCE($5, "description"),
         "tags" = COALESCE($6, "tags"),
         "genres" = COALESCE($7, "genres"),
         "status" = COALESCE($8, "status"),
+        "version" = COALESCE($9, "version"),
         "modifiedAt" = NOW()
       WHERE "guid" = $1
     `;
 
     await db.query(updateQuery, [
-      guid,
+      videoId,
       category,
       title,
-      thumbnailUrl,
+      thumbnailFileName,
       description,
       tags ? JSON.stringify(tags) : null,
       genres ? JSON.stringify(genres) : null,
-      status
+      status,
+      version
     ]);
+
+    // Generate tokens required to upload video
+    const tokens = getVideoUploadTokens(videoId);
 
     res.json({
       success: true,
-      message: 'Video draft saved successfully.'
+      message: 'Video draft saved successfully.',
+      data: { ...tokens }
     });
   } catch (error) {
     res.status(500).json({
@@ -339,20 +254,13 @@ const updatevideo = async (req, res) => {
 
 const deleteVideo = async (req, res) => {
   try {
-    const videoTitle = req.params.id;
+    const videoId = req.params.id;
 
     const videoQuery = `
       SELECT guid
       FROM ${tables.VIDEOS}
-      WHERE title = $1
+      WHERE guid = $1
     `;
-    const { rows: videoRows } = await db.query(videoQuery, [videoTitle]);
-    if (videoRows.length === 0) {
-      return res.status(409).json({
-        success: false,
-        message: `A video named '${videoTitle}' doesn't exist.`
-      });
-    }
 
     const options = {
       headers: {
@@ -361,20 +269,20 @@ const deleteVideo = async (req, res) => {
       }
     };
 
-    await got.delete(`${url}/${LIBRARY_ID}/videos/${videoRows[0].guid}`, options);
+    await got.delete(`${url}/${LIBRARY_ID}/videos/${videoId}`, options);
 
-    const deleteQuery = `DELETE FROM ${tables.VIDEOS} WHERE title = $1`;
-    const { rowCount } = await db.query(deleteQuery, [videoTitle]);
+    const deleteQuery = `DELETE FROM ${tables.VIDEOS} WHERE guid = $1`;
+    const { rowCount } = await db.query(deleteQuery, [videoId]);
     if (rowCount === 0) {
       return res.status(404).json({
         success: false,
-        message: `No video named '${videoTitle}' exists.`
+        message: `No video found with given id.`
       });
     }
-
+    
     res.json({
       success: true,
-      message: `Video ${videoTitle} deleted successfully.`
+      message: `Video deleted successfully.`
     });
   } catch (error) {
     res.status(500).json({
@@ -435,8 +343,6 @@ export {
   updatevideo,
   deleteVideo,
   getCaptionsList,
-  getVideoURL,
-  getVideoThumbnailURL,
   getVideosByGenre,
   globalSearch
 };
