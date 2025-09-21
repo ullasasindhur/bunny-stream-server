@@ -15,11 +15,18 @@ cd /apps
 git clone https://github.com/ullasasindhur/bunny-stream-server.git
 cd bunny-stream-server
 
-sudo dnf install mariadb105-server -y
-sudo systemctl start mariadb
-sudo systemctl enable mariadb
-sudo systemctl status mariadb
-sudo mysql_secure_installation
+# https://hbayraktar.medium.com/how-to-install-postgresql-15-on-amazon-linux-2023-a-step-by-step-guide-57eebb7ad9fc
+sudo dnf install -y postgresql17 postgresql17-server postgresql17-contrib
+sudo postgresql-setup --initdb
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+sudo systemctl status postgresql
+
+sudo passwd postgres
+su - postgres
+psql -c "ALTER USER postgres WITH PASSWORD 'your-password';"
+sudo vi /var/lib/pgsql/data/pg_hba.conf # change ident to scram-sha-256
+sudo systemctl restart postgresql
 
 touch .env
 vi .env

@@ -46,3 +46,4 @@ export const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 export const SESSION_SECRET = process.env.SESSION_SECRET;
 export const usersTableName = 'users';
 export const videosTableName = 'videos';
+export const videosReviewsTableName = 'video_reviews';

@@ -135,7 +135,7 @@ const getVideosByGenre = async (req, res) => {
 };
 const createVideo = async (req, res) => {
   try {
-    const { title, category, collectionId, thumbnailTime, description, tags, genres, status } =
+    const { title, category, collectionId, thumbnailTime, description, tags, genres, status, expiryTime } =
       req.body;
 
     // Create virtual video
@@ -157,8 +157,8 @@ const createVideo = async (req, res) => {
     // Add record in db
     await db.query(
       `
-      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres")
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "expiryTime")
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
     `,
       [
         data.guid,
@@ -167,7 +167,8 @@ const createVideo = async (req, res) => {
         JSON.stringify(tags || []),
         category,
         status,
-        JSON.stringify(genres || [])
+        JSON.stringify(genres || []),
+        expiryTime
       ]
     );
 

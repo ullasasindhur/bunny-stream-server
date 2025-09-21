@@ -1,6 +1,7 @@
 import express, { json } from 'express';
 import videosRoutes from './routes/videos.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import moderatorRoutes from './routes/moderator.routes.js';
 import { getDb } from './database.js';
 import cors from 'cors';
 import { PORT } from './constants/common.js';
@@ -19,6 +20,7 @@ app.use(passport.initialize());
 
 app.use('/videos', videosRoutes);
 app.use('/auth', authRoutes);
+app.use('/moderator', moderatorRoutes);
 
 app.get('/', (req, res) => {
   res.json({ success: true, message: 'Welcome to Bunny Stream Server!' });

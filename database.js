@@ -7,7 +7,8 @@ import {
   DB_PASSWORD,
   DB_PORT,
   DB_USER,
-  usersTableName
+  usersTableName,
+  videosReviewsTableName
 } from './constants/common.js';
 
 const dbConfig = {
@@ -41,6 +42,7 @@ async function initializeDatabase() {
         "version" BIGINT DEFAULT 0 NOT NULL,
         "createdAt" timestamptz DEFAULT now() NOT NULL,
         "modifiedAt" timestamptz DEFAULT now() NOT NULL,
+        "expiryTime" timestamptz NOT NULL,
         PRIMARY KEY ("guid", "status", "category")
       ) PARTITION BY LIST ("status");
 
@@ -78,6 +80,14 @@ async function initializeDatabase() {
         google_id TEXT UNIQUE
       );  
 
+      CREATE TABLE IF NOT EXISTS ${videosReviewsTableName} (
+        id SERIAL PRIMARY KEY,
+        video_id UUID NOT NULL,
+        user_id UUID NOT NULL,
+        action TEXT NOT NULL,
+        value TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `);
 
     console.log('✅ Database and partitions are ready.');
