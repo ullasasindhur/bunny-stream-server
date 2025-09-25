@@ -1,8 +1,7 @@
 import { got } from 'got';
-import crypto from 'node:crypto';
 import { getDb } from '../database.js';
 import captions from '../constants/captions.js';
-import { LIBRARY_API_KEY, LIBRARY_ID } from '../constants/common.js';
+import { LIBRARY_API_KEY, LIBRARY_ID, PULLZONE_API_KEY } from '../constants/common.js';
 import { tables, videoStatus } from '../constants/db.js';
 import { bunnyClient } from '../config/bunnyClient.js';
 import { getVideoUploadTokens } from '../utils/video.js';
@@ -67,12 +66,12 @@ const getVideo = async (req, res) => {
       });
     }
     const response = await bunnyClient.get(`videos/${videoId}`);
-    const { category, title, description } = rows[0] || {};
+    const { category, title, description, status } = rows[0] || {};
 
     res.json({
       success: true,
       message: 'Video fetched successfully.',
-      data: { ...rows[0], ...response.body, category, title, description }
+      data: { ...rows[0], ...response.body, category, title, description, status }
     });
   } catch (error) {
     res.status(500).json({
@@ -135,8 +134,22 @@ const getVideosByGenre = async (req, res) => {
 };
 const createVideo = async (req, res) => {
   try {
-    const { title, category, collectionId, thumbnailTime, description, tags, genres, status, expiryTime } =
-      req.body;
+    const {
+      title,
+      category,
+      collectionId,
+      thumbnailTime,
+      description,
+      tags,
+      genres,
+      directors,
+      producers,
+      cast,
+      languages,
+      studio,
+      expiryTime,
+      status
+    } = req.body;
 
     // Create virtual video
     const data = await got
@@ -157,8 +170,8 @@ const createVideo = async (req, res) => {
     // Add record in db
     await db.query(
       `
-      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "expiryTime")
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "directors", "producers", "cast", "studio", "languages", ""expiryTime") 
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     `,
       [
         data.guid,
@@ -168,6 +181,11 @@ const createVideo = async (req, res) => {
         category,
         status,
         JSON.stringify(genres || []),
+        JSON.stringify(directors || []),
+        JSON.stringify(producers || []),
+        JSON.stringify(cast || []),
+        studio,
+        JSON.stringify(languages || []),
         expiryTime
       ]
     );
@@ -195,7 +213,22 @@ const createVideo = async (req, res) => {
 const updatevideo = async (req, res) => {
   try {
     const videoId = req.params.id;
-    const { category, title, thumbnailFileName, description, tags, genres, status, version } = req.body;
+    const {
+      category,
+      title,
+      thumbnailFileName,
+      thumbnailStoragePath,
+      description,
+      tags,
+      genres,
+      directors,
+      producers,
+      cast,
+      languages,
+      studio,
+      status,
+      version
+    } = req.body;
 
     // Check if video exists
     const checkQuery = `SELECT guid FROM ${tables.VIDEOS} WHERE guid = $1`;
@@ -215,11 +248,17 @@ const updatevideo = async (req, res) => {
         "category" = COALESCE($2, "category"),
         "title" = COALESCE($3, "title"),
         "thumbnailFileName" = COALESCE($4, "thumbnailFileName"),
-        "description" = COALESCE($5, "description"),
-        "tags" = COALESCE($6, "tags"),
-        "genres" = COALESCE($7, "genres"),
-        "status" = COALESCE($8, "status"),
-        "version" = COALESCE($9, "version"),
+        "thumbnailStoragePath" = COALESCE($5, "thumbnailStoragePath"),
+        "description" = COALESCE($6, "description"),
+        "tags" = COALESCE($7, "tags"),
+        "genres" = COALESCE($8, "genres"),
+        "status" = COALESCE($9, "status"),
+        "version" = COALESCE($10, "version"),
+        "directors" = COALESCE($11, "directors"),
+        "producers" = COALESCE($12, "producers"),
+        "cast" = COALESCE($13, "cast"),
+        "languages" = COALESCE($14, "languages"),
+        "studio" = COALESCE($15, "studio"),
         "modifiedAt" = NOW()
       WHERE "guid" = $1
     `;
@@ -229,11 +268,17 @@ const updatevideo = async (req, res) => {
       category,
       title,
       thumbnailFileName,
+      thumbnailStoragePath,
       description,
       tags ? JSON.stringify(tags) : null,
       genres ? JSON.stringify(genres) : null,
       status,
-      version
+      version,
+      directors ? JSON.stringify(directors) : null,
+      producers ? JSON.stringify(producers) : null,
+      cast ? JSON.stringify(cast) : null,
+      languages ? JSON.stringify(languages) : null,
+      studio
     ]);
 
     // Generate tokens required to upload video
@@ -257,12 +302,6 @@ const deleteVideo = async (req, res) => {
   try {
     const videoId = req.params.id;
 
-    const videoQuery = `
-      SELECT guid
-      FROM ${tables.VIDEOS}
-      WHERE guid = $1
-    `;
-
     const options = {
       headers: {
         accept: 'application/json',
@@ -270,7 +309,25 @@ const deleteVideo = async (req, res) => {
       }
     };
 
-    await got.delete(`${url}/${LIBRARY_ID}/videos/${videoId}`, options);
+    try {
+      await got.delete(`${url}/${LIBRARY_ID}/videos/${videoId}`, options);
+    } catch {}
+
+    try {
+      const videoQuery = `
+        SELECT "thumbnailStoragePath" 
+        FROM ${tables.VIDEOS}
+        WHERE guid = $1
+      `;
+      const { rows: videos } = await db.query(videoQuery, [videoId]);
+      const thumbnailStoragePath = videos?.[0]?.thumbnailStoragePath;
+
+      await got.delete(thumbnailStoragePath, {
+        headers: {
+          AccessKey: 'b0e13b54-e0a9-4f34-831a151fcbd0-c1e3-42cd'
+        }
+      });
+    } catch {}
 
     const deleteQuery = `DELETE FROM ${tables.VIDEOS} WHERE guid = $1`;
     const { rowCount } = await db.query(deleteQuery, [videoId]);
@@ -280,7 +337,7 @@ const deleteVideo = async (req, res) => {
         message: `No video found with given id.`
       });
     }
-    
+
     res.json({
       success: true,
       message: `Video deleted successfully.`
