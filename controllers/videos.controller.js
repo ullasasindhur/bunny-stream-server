@@ -71,7 +71,14 @@ const getVideo = async (req, res) => {
     res.json({
       success: true,
       message: 'Video fetched successfully.',
-      data: { ...rows[0], ...response.body, category, title, description, status }
+      data: {
+        ...rows[0],
+        ...response.body,
+        category,
+        title,
+        description,
+        status
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -170,7 +177,7 @@ const createVideo = async (req, res) => {
     // Add record in db
     await db.query(
       `
-      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "directors", "producers", "cast", "studio", "languages", ""expiryTime") 
+      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "directors", "producers", "cast", "studio", "languages", "expiryTime")
       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     `,
       [
@@ -315,7 +322,7 @@ const deleteVideo = async (req, res) => {
 
     try {
       const videoQuery = `
-        SELECT "thumbnailStoragePath" 
+        SELECT "thumbnailStoragePath"
         FROM ${tables.VIDEOS}
         WHERE guid = $1
       `;
@@ -370,13 +377,29 @@ const globalSearch = async (req, res) => {
     }
 
     const searchQuery = `
-    SELECT * FROM videos
+    SELECT * FROM ${tables.VIDEOS}
     WHERE LOWER(title) LIKE LOWER($1)
+       OR LOWER("studio") LIKE LOWER($1)
+       OR EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements_text("cast") AS a(actor_element)
+           WHERE LOWER(a.actor_element) LIKE LOWER($1)
+       )
+       OR EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements_text("directors") AS d(director_element)
+           WHERE LOWER(d.director_element) LIKE LOWER($1)
+       )
+       OR EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements_text("producers") AS p(producer_element)
+           WHERE LOWER(p.producer_element) LIKE LOWER($1)
+       )
        OR EXISTS (
            SELECT 1
            FROM jsonb_array_elements_text(tags) AS tag
            WHERE LOWER(tag) LIKE LOWER($1)
-       );    
+       );
     `;
     const { rows } = await db.query(searchQuery, [`%${queryParam}%`]);
 
