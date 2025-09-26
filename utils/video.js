@@ -1,15 +1,15 @@
 import crypto from 'node:crypto';
-import { LIBRARY_API_KEY, LIBRARY_ID } from "../constants/common.js";
+import { LIBRARY_API_KEY, LIBRARY_ID } from '../constants/common.js';
 
-export const getVideoUploadTokens = (guid) => {
-    const expire = Math.floor(Date.now() / 1000) + 600;
-    const raw = `${LIBRARY_ID}${LIBRARY_API_KEY}${expire}${guid}`;
-    const hash = crypto.createHash('sha256').update(raw).digest('hex');
-    return {
-        AuthorizationSignature: hash,
-        AuthorizationExpire: expire
-    }
-}
+export const getVideoUploadTokens = guid => {
+  const expire = Math.floor(Date.now() / 1000) + 600;
+  const raw = `${LIBRARY_ID}${LIBRARY_API_KEY}${expire}${guid}`;
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  return {
+    AuthorizationSignature: hash,
+    AuthorizationExpire: expire
+  };
+};
 
 // const getVideoURL = async (req, res) => {
 //   try {
@@ -90,4 +90,3 @@ export const getVideoUploadTokens = (guid) => {
 //     });
 //   }
 // };
-
