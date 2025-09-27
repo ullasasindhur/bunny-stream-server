@@ -1,7 +1,7 @@
 import { got } from 'got';
 import { getDb } from '../database.js';
 import captions from '../constants/captions.js';
-import { LIBRARY_API_KEY, LIBRARY_ID, PULLZONE_API_KEY } from '../constants/common.js';
+import { LIBRARY_API_KEY, LIBRARY_ID } from '../constants/common.js';
 import { tables, videoStatus } from '../constants/db.js';
 import { bunnyClient } from '../config/bunnyClient.js';
 import { getVideoUploadTokens } from '../utils/video.js';
@@ -16,13 +16,30 @@ const getVideos = async (req, res) => {
     const status = req.query.status || videoStatus.PUBLISHED;
     const offset = (page - 1) * limit;
     const table = status === videoStatus.PENDING ? tables.PENDING_VIDEOS : tables.PUBLISHED_VIDEOS;
+    const sortBy = req.query.sortBy || 'createdAt'; // default fallback
+    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC'; // default DESC
+
+    // Whitelist columns
+    const numericFields = ['views', 'totalWatchTime', 'averageWatchTime', 'engagementScore'];
+    const allowedSortFields = [...numericFields, 'createdAt'];
+
+    if (!allowedSortFields.includes(sortBy)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid sort field. Allowed fields: ${allowedSortFields.join(', ')}`
+      });
+    }
+
+    // If it's numeric field → filter out <= 0 values
+    const whereClause = numericFields.includes(sortBy) ? `WHERE "${sortBy}" > 0` : '';
 
     const videoQuery = `
       SELECT * FROM ${table}
-      ORDER BY "createdAt" DESC
+      ${whereClause}
+      ORDER BY "${sortBy}" ${sortOrder}
       LIMIT $1 OFFSET $2
     `;
-    const countQuery = `SELECT COUNT(*) AS total_count FROM ${table}`;
+    const countQuery = `SELECT COUNT(*) AS total_count FROM ${table} ${whereClause}`;
 
     const { rows: videos } = await db.query(videoQuery, [limit, offset]);
     const { rows: countRows } = await db.query(countQuery);
@@ -91,11 +108,11 @@ const getVideo = async (req, res) => {
 
 const getVideosByGenre = async (req, res) => {
   try {
-    const genre = req.query.genre;
+    const genre = req.params.genre;
     if (!genre) {
       return res.status(400).json({
         success: false,
-        message: 'Genre is required in query parameter "id".'
+        message: 'Genre is required path parameter "genre".'
       });
     }
 
@@ -104,7 +121,7 @@ const getVideosByGenre = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const videoQuery = `
-      SELECT guid, title, description, "thumbnailFileName", category, genres
+      SELECT *
       FROM ${tables.VIDEOS}
       WHERE genres @> $1::jsonb
       ORDER BY "createdAt" DESC
@@ -154,7 +171,6 @@ const createVideo = async (req, res) => {
       cast,
       languages,
       studio,
-      expiryTime,
       status
     } = req.body;
 
@@ -177,8 +193,8 @@ const createVideo = async (req, res) => {
     // Add record in db
     await db.query(
       `
-      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "directors", "producers", "cast", "studio", "languages", "expiryTime")
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "directors", "producers", "cast", "studio", "languages") 
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12)
     `,
       [
         data.guid,
@@ -192,8 +208,7 @@ const createVideo = async (req, res) => {
         JSON.stringify(producers || []),
         JSON.stringify(cast || []),
         studio,
-        JSON.stringify(languages || []),
-        expiryTime
+        JSON.stringify(languages || [])
       ]
     );
 
@@ -369,6 +384,10 @@ const getCaptionsList = (req, res) => {
 const globalSearch = async (req, res) => {
   try {
     const queryParam = req.query.q;
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit) || 50, 1);
+    const offset = (page - 1) * limit;
+
     if (!queryParam) {
       return res.status(400).json({
         success: false,
@@ -399,9 +418,11 @@ const globalSearch = async (req, res) => {
            SELECT 1
            FROM jsonb_array_elements_text(tags) AS tag
            WHERE LOWER(tag) LIKE LOWER($1)
-       );
+       )
+      ORDER BY "createdAt" DESC
+      LIMIT $2 OFFSET $3    ;
     `;
-    const { rows } = await db.query(searchQuery, [`%${queryParam}%`]);
+    const { rows } = await db.query(searchQuery, [`%${queryParam}%`, limit, offset]);
 
     res.json({
       success: true,
@@ -417,6 +438,70 @@ const globalSearch = async (req, res) => {
   }
 };
 
+const updateStats = async (req, res) => {
+  try {
+    const videoId = req.params.id;
+    const videoDetails = await got.get(`${url}/${LIBRARY_ID}/videos/${videoId}`, {
+      headers: {
+        accept: 'application/json',
+        AccessKey: LIBRARY_API_KEY
+      }
+    });
+
+    const stats = await got.get(`${url}/${LIBRARY_ID}/statistics?videoGuid=${videoId}`, {
+      headers: {
+        accept: 'application/json',
+        AccessKey: LIBRARY_API_KEY
+      }
+    });
+    const { views, totalWatchTime, averageWatchTime } = JSON.parse(videoDetails.body) || {};
+    const { engagementScore } = JSON.parse(stats.body) || {};
+    const updateQuery = `
+        UPDATE ${tables.VIDEOS}
+        SET
+          "views" = 
+                    CASE 
+                      WHEN $2 > 0 THEN $2 
+                      ELSE "views" 
+                    END,
+          "totalWatchTime" = 
+                    CASE 
+                      WHEN $3 > 0 THEN $3 
+                      ELSE "totalWatchTime" 
+                    END,
+          "averageWatchTime" = 
+                    CASE 
+                      WHEN $4 > 0 THEN $4 
+                      ELSE "averageWatchTime" 
+                    END,
+          "engagementScore" = 
+                    CASE 
+                      WHEN $5 > 0 THEN $5 
+                      ELSE "engagementScore" 
+                    END
+        WHERE "guid" = $1
+    `;
+
+    await db.query(updateQuery, [
+      videoId,
+      views,
+      totalWatchTime,
+      averageWatchTime,
+      engagementScore
+    ]);
+    res.json({
+      success: true,
+      message: 'Video stats updated successfully.'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update video stats.',
+      error: { message: error.message }
+    });
+  }
+};
+
 export {
   getVideos,
   getVideo,
@@ -425,5 +510,6 @@ export {
   deleteVideo,
   getCaptionsList,
   getVideosByGenre,
-  globalSearch
+  globalSearch,
+  updateStats
 };

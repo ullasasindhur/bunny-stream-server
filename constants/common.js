@@ -14,8 +14,7 @@ const requiredEnvVars = [
   'PORT',
   'PULLZONE_API_KEY',
   'PULLZONE_URL',
-  'REFRESH_TOKEN_SECRET',
-  'SESSION_SECRET'
+  'REFRESH_TOKEN_SECRET'
 ];
 
 requiredEnvVars.forEach(envVar => {
@@ -35,7 +34,8 @@ export const DB_PASSWORD = process.env.DB_PASSWORD;
 export const DB_PORT = process.env.DB_PORT;
 export const DB_USER = process.env.DB_USER;
 export const BASE_URL = `${process.env.BASE_URL}:${process.env.PORT}`;
-export const GOOGLE_CALLBACK_URL = `${process.env.BASE_URL}:${process.env.PORT}/auth/google/callback`;
+export const CLIENT_URL = `${process.env.CLIENT_URL}`;
+export const GOOGLE_CALLBACK_URL = `${CLIENT_URL}/auth`;
 export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 export const LIBRARY_API_KEY = process.env.LIBRARY_API_KEY;
@@ -44,7 +44,7 @@ export const PORT = process.env.PORT;
 export const PULLZONE_API_KEY = process.env.PULLZONE_API_KEY;
 export const PULLZONE_URL = process.env.PULLZONE_URL;
 export const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
-export const SESSION_SECRET = process.env.SESSION_SECRET;
+export const AUTH_CODE_SECRET = process.env.AUTH_CODE_SECRET;
 export const usersTableName = 'users';
 export const videosTableName = 'videos';
 export const videosReviewsTableName = 'video_reviews';

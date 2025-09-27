@@ -6,7 +6,8 @@ import {
   signup,
   status,
   googleCallback,
-  refresh
+  refresh,
+  googleUrl
 } from '../controllers/auth.controller.js';
 
 const router = Router();
@@ -17,9 +18,10 @@ router.get(
   passport.authenticate('google', { scope: ['profile', 'email'], session: false })
 );
 router.get('/google/callback', googleCallback);
+router.get('/google/url', googleUrl);
 router.post('/signup', signup);
 router.post('/logout', logout);
 router.get('/status', status);
-router.post('/refresh', refresh);
+router.get('/refresh', refresh);
 
 export default router;

@@ -7,18 +7,21 @@ import {
   getCaptionsList,
   getVideosByGenre,
   updatevideo,
-  globalSearch
+  globalSearch,
+  updateStats
 } from '../controllers/videos.controller.js';
+import { authenticateToken } from '../middlewares/auth.js';
 
 const router = Router();
 
-router.get('/', getVideos);
-router.get('/search', globalSearch);
-router.get('/captions-list', getCaptionsList);
-router.get('/genre', getVideosByGenre);
-router.get('/:id', getVideo);
-router.post('/', createVideo);
-router.delete('/:id', deleteVideo);
-router.patch('/:id', updatevideo);
+router.get('/', authenticateToken, getVideos);
+router.get('/search', authenticateToken, globalSearch);
+router.get('/captions-list', authenticateToken, getCaptionsList);
+router.get('/genre/:genre', authenticateToken, getVideosByGenre);
+router.get('/:id', authenticateToken, getVideo);
+router.post('/', authenticateToken, createVideo);
+router.delete('/:id', authenticateToken, deleteVideo);
+router.patch('/:id', authenticateToken, updatevideo);
+router.patch('/stats/:id', authenticateToken, updateStats);
 
 export default router;

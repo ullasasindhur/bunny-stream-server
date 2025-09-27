@@ -81,9 +81,10 @@ async function initializeDatabase() {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         username VARCHAR(50) UNIQUE NOT NULL,
         email CITEXT UNIQUE NOT NULL,
-        password_hash TEXT,
-        full_name VARCHAR(100),
-        google_id TEXT UNIQUE
+        "passwordHash" TEXT,
+        name VARCHAR(100),
+        "googleId" TEXT UNIQUE,
+        picture TEXT
       );  
 
       CREATE TABLE IF NOT EXISTS ${videosReviewsTableName} (

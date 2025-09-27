@@ -3,9 +3,10 @@ import videosRoutes from './routes/videos.routes.js';
 import { startCronJobs } from './utils/cronJobs.js';
 import authRoutes from './routes/auth.routes.js';
 import moderatorRoutes from './routes/moderator.routes.js';
+import usersRoutes from './routes/users.routes.js';
 import { getDb } from './database.js';
 import cors from 'cors';
-import { PORT } from './constants/common.js';
+import { CLIENT_URL, PORT } from './constants/common.js';
 import passport from 'passport';
 
 const app = express();
@@ -13,6 +14,7 @@ const db = getDb();
 
 app.use(
   cors({
+    origin: CLIENT_URL,
     credentials: true
   })
 );
@@ -22,6 +24,7 @@ app.use(passport.initialize());
 app.use('/videos', videosRoutes);
 app.use('/auth', authRoutes);
 app.use('/moderator', moderatorRoutes);
+app.use('/users', usersRoutes);
 
 app.get('/', (req, res) => {
   res.json({ success: true, message: 'Welcome to Bunny Stream Server!' });
