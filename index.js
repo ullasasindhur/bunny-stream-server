@@ -1,5 +1,6 @@
 import express, { json } from 'express';
 import videosRoutes from './routes/videos.routes.js';
+import { startCronJobs } from './utils/cronJobs.js';
 import authRoutes from './routes/auth.routes.js';
 import moderatorRoutes from './routes/moderator.routes.js';
 import { getDb } from './database.js';
@@ -28,4 +29,5 @@ app.get('/', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  startCronJobs();
 });
