@@ -1,11 +1,11 @@
 import { getDb } from '../database.js';
-import { videosReviewsTableName } from '../constants/common.js';
+import { tables } from '../constants/db.js';
 const db = getDb();
 
 const getDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    const reviewQuery = `SELECT * FROM ${videosReviewsTableName} WHERE video_id = $1`;
+    const reviewQuery = `SELECT * FROM ${tables.VIDEO_REVIEWS} WHERE video_id = $1`;
     const { rowCount, rows } = await db.query(reviewQuery, [id]);
     if (rowCount === 0) {
       return res.status(404).json({
@@ -38,7 +38,7 @@ const addDetails = async (req, res) => {
     }
 
     const insertQuery = `
-      INSERT INTO ${videosReviewsTableName} (video_id, user_id, action, value)
+      INSERT INTO ${tables.VIDEO_REVIEWS} (video_id, user_id, action, value)
       VALUES ($1, $2, $3, $4);
     `;
 

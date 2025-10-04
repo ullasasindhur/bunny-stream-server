@@ -8,7 +8,8 @@ import {
   getVideosByGenre,
   updatevideo,
   globalSearch,
-  updateStats
+  updateStats,
+  getVideosByDashboardView
 } from '../controllers/videos.controller.js';
 import { authenticateToken } from '../middlewares/auth.js';
 
@@ -18,6 +19,7 @@ router.get('/', authenticateToken, getVideos);
 router.get('/search', authenticateToken, globalSearch);
 router.get('/captions-list', authenticateToken, getCaptionsList);
 router.get('/genre/:genre', authenticateToken, getVideosByGenre);
+router.get('/dashboardView/:dashboardView', authenticateToken, getVideosByDashboardView);
 router.get('/:id', authenticateToken, getVideo);
 router.post('/', authenticateToken, createVideo);
 router.delete('/:id', authenticateToken, deleteVideo);

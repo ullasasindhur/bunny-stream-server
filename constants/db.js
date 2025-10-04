@@ -9,7 +9,9 @@ export const tables = {
   PUBLISHED_TRAILERS: 'videos_published_trailers',
   MOVIE_GENRES_INDEX: 'idx_movies_published_genres',
   SHORTS_GENRES_INDEX: 'idx_shorts_published_genres',
-  SERIES_GENRES_INDEX: 'idx_shorts_published_genres'
+  SERIES_GENRES_INDEX: 'idx_shorts_published_genres',
+  USERS: 'users',
+  VIDEO_REVIEWS: 'video_reviews'
 };
 
 export const categories = {

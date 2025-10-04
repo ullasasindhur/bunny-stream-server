@@ -4,13 +4,11 @@ import { startCronJobs } from './utils/cronJobs.js';
 import authRoutes from './routes/auth.routes.js';
 import moderatorRoutes from './routes/moderator.routes.js';
 import usersRoutes from './routes/users.routes.js';
-import { getDb } from './database.js';
 import cors from 'cors';
 import { CLIENT_URL, PORT } from './constants/common.js';
 import passport from 'passport';
 
 const app = express();
-const db = getDb();
 
 app.use(
   cors({

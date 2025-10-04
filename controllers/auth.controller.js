@@ -5,7 +5,6 @@ import { SignJWT, jwtVerify, decodeJwt } from 'jose';
 import { randomUUID, randomBytes, createHash } from 'crypto';
 import { getDb } from '../database.js';
 import {
-  usersTableName,
   ACCESS_TOKEN_SECRET,
   REFRESH_TOKEN_SECRET,
   GOOGLE_CALLBACK_URL,
@@ -13,18 +12,35 @@ import {
   GOOGLE_CLIENT_SECRET
 } from '../constants/common.js';
 import got from 'got';
+import { tables } from '../constants/db.js';
+import { blockedTokens, codeVerifiers } from '../constants/auth.js';
 
 const db = getDb();
 
-const codeVerifiers = new Map();
 const CODE_VERIFIER_TTL = 5 * 60 * 1000; // 5 minutes
 const access_token_encode = new TextEncoder().encode(ACCESS_TOKEN_SECRET);
 const refresh_token_encode = new TextEncoder().encode(REFRESH_TOKEN_SECRET);
-const access_expiry = '15m';
+const access_expiry = '20s';
 const refresh_expiry = '7d';
 
-const accessBlacklist = new Set();
-const refreshBlacklist = new Set();
+async function verifyAccess(token) {
+  try {
+    const { payload } = await jwtVerify(token, access_token_encode);
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyRefresh(token) {
+  try {
+    const { payload } = await jwtVerify(token, refresh_token_encode);
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 
 function isStrongPassword(pw) {
   if (typeof pw !== 'string' || pw.length < 12) return false;
@@ -36,7 +52,7 @@ function isStrongPassword(pw) {
 }
 
 async function createAccessToken(user) {
-  return new SignJWT({ sub: String(user.sub), username: user.email, email: user.email })
+  return new SignJWT({ sub: String(user.id), username: user.email, email: user.email, isModerator: user.isModerator, isAdmin: user.isAdmin, isUploader: user.isUploader })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(access_expiry)
@@ -45,7 +61,7 @@ async function createAccessToken(user) {
 
 async function createRefreshToken(user) {
   const jti = randomUUID();
-  const token = await new SignJWT({ sub: String(user.sub), jti })
+  const token = await new SignJWT({ sub: String(user.id), jti, username: user.email, email: user.email })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(refresh_expiry)
@@ -53,25 +69,6 @@ async function createRefreshToken(user) {
   return { token, jti };
 }
 
-async function verifyAccess(token) {
-  if (accessBlacklist.has(token)) return null;
-  try {
-    const { payload } = await jwtVerify(token, access_token_encode);
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-async function verifyRefresh(token) {
-  if (refreshBlacklist.has(token)) return null;
-  try {
-    const { payload } = await jwtVerify(token, refresh_token_encode);
-    return payload;
-  } catch {
-    return null;
-  }
-}
 
 passport.use(
   new LocalStrategy(
@@ -80,7 +77,7 @@ passport.use(
       try {
         const query = `
           SELECT id, username, email, password_hash, full_name
-          FROM ${usersTableName}
+          FROM ${tables.USERS}
           WHERE username = $1 OR email = $1
           LIMIT 1
         `;
@@ -149,7 +146,7 @@ const signup = async (req, res) => {
     }
     const hashedPassword = await bcrypt.hash(password, 12);
     const insertQuery = `
-      INSERT INTO ${usersTableName} (username, email, password_hash, full_name)
+      INSERT INTO ${tables.USERS} (username, email, password_hash, full_name)
       VALUES ($1, $2, $3, $4)
       RETURNING id, username, email, full_name
     `;
@@ -176,20 +173,23 @@ const signup = async (req, res) => {
 
 const logout = async (req, res) => {
   let loggedOut = false;
+  let userId;
   const authHeader = req.headers.authorization;
+  const token = authHeader.split(' ')[1];
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
     const payload = await verifyAccess(token);
+
     if (payload) {
-      accessBlacklist.add(token);
+      userId = payload.email;
       loggedOut = true;
     }
   }
   const refreshHeader = req.headers['x-refresh-token'];
+  
   if (refreshHeader) {
     const payload = await verifyRefresh(refreshHeader);
     if (payload) {
-      refreshBlacklist.add(refreshHeader);
+      userId = payload.email;
       loggedOut = true;
     }
   }
@@ -198,6 +198,7 @@ const logout = async (req, res) => {
       .status(401)
       .json({ success: false, message: 'No active session or valid token found.' });
   }
+  blockedTokens.set(userId, { access: token, refresh: refreshHeader });
   res.json({ success: true, message: 'Logout successful.' });
 };
 
@@ -228,34 +229,36 @@ const refresh = async (req, res) => {
     if (!refreshToken) {
       return res.status(401).json({ success: false, message: 'Refresh token missing.' });
     }
+
     const payload = await verifyRefresh(refreshToken);
     if (!payload) {
       return res.status(401).json({ success: false, message: 'Invalid or expired refresh token.' });
     }
-    refreshBlacklist.add(refreshToken);
+    const blockedToken = blockedTokens.get(payload.email)?.refresh;
+    if (blockedToken?.includes(refreshToken)) {
+      return res.status(401).json({ success: false, message: 'Refresh token expired' });
+    }
     const q = `
-      SELECT id, username, email, full_name
-      FROM ${usersTableName}
-      WHERE id = $1
+      SELECT id, username, email, name, picture, "isAdmin", "isModerator", "isUploader"
+      FROM ${tables.USERS}
+      WHERE email = $1
       LIMIT 1
     `;
-    const { rows } = await db.query(q, [payload.sub]);
+    const { rows } = await db.query(q, [payload.email]);
     if (rows.length === 0) {
       return res.status(401).json({ success: false, message: 'User not found.' });
     }
     const user = rows[0];
     const access = await createAccessToken(user);
-    // const { token: newRefresh } = await createRefreshToken(user);
     res.json({
       success: true,
       message: 'Token refreshed.',
       data: {
         accessToken: access
-        // refreshToken: newRefresh
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to refresh token.' });
+    res.status(500).json({ success: false, message: 'Failed to refresh token.' + error?.message });
   }
 };
 
@@ -312,10 +315,9 @@ const googleCallback = async (req, res) => {
 
     const profile = decodeJwt(tokenRes.body?.id_token);
 
-    const accessToken = await createAccessToken(profile);
-    const { token: refreshToken } = await createRefreshToken(profile);
+
     const { email, name, picture, sub: googleId } = profile;
-    const findQ = `SELECT id, username, email, name, picture FROM ${usersTableName} WHERE email = $1 LIMIT 1`;
+    const findQ = `SELECT id, username, email, name, picture, "isAdmin", "isModerator", "isUploader" FROM ${tables.USERS} WHERE email = $1 LIMIT 1`;
     const findRes = await db.query(findQ, [email]);
     let user;
     if (findRes.rows.length > 0) {
@@ -323,13 +325,15 @@ const googleCallback = async (req, res) => {
     } else {
       const username = email.split('@')[0];
       const insertQ = `
-            INSERT INTO ${usersTableName} (username, email, name, "googleId", picture)
+            INSERT INTO ${tables.USERS} (username, email, name, "googleId", picture)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id, username, email, name, picture
           `;
       const ins = await db.query(insertQ, [username, email, name, googleId, picture]);
       user = ins.rows[0];
     }
+    const accessToken = await createAccessToken(user);
+    const { token: refreshToken } = await createRefreshToken(user);
 
     res.json({
       success: true,

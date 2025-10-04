@@ -1,3 +1,4 @@
+import { tables } from '../constants/db.js';
 import { getDb } from '../database.js';
 
 const db = getDb();
@@ -5,9 +6,10 @@ const db = getDb();
 export const getUserMetadata = async (req, res) => {
   const userId = req.user.id;
   try {
-    const result = await db.query(`SELECT "continueWatching" FROM users WHERE email = $1`, [
-      userId
-    ]);
+    const result = await db.query(
+      `SELECT "continueWatching", "preferedGenres", "preferedLanguages", "isAdmin", "isModerator", "isUploader", personalised FROM users WHERE email = $1`,
+      [userId]
+    );
     if (!result?.rows[0]) {
       return res.status(404).json({
         success: false,
@@ -17,6 +19,25 @@ export const getUserMetadata = async (req, res) => {
     res.json({
       success: true,
       data: { success: true, message: 'User profile fetched', data: result.rows[0] }
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: 'Error fetching user profile: ' + error.message });
+  }
+};
+
+export const searchUsers = async (req, res) => {
+  const searchQuery = req.query.q;
+  const limit = 10;
+  try {
+    const result = await db.query(
+      `SELECT "id", "email", "name", "picture", "isAdmin", "isModerator", "isUploader" FROM users WHERE email LIKE '%' || $1 || '%' LIMIT $2`,
+      [searchQuery, limit]
+    );
+    res.json({
+      success: true,
+      data: { success: true, message: 'User profile fetched', data: result.rows }
     });
   } catch (error) {
     res
@@ -59,5 +80,24 @@ export const setVideoProgress = async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Progress update failed: ' + error.message });
+  }
+};
+
+export const setRole = async (req, res) => {
+  const { userId, role, value } = req.body;
+
+  try {
+    const updateQuery = `
+      UPDATE ${tables.USERS}
+      SET
+        "${role}" = COALESCE($2, "${role}")
+      WHERE "id" = $1
+    `;
+
+    const result = await db.query(updateQuery, [userId, value]);
+
+    res.json({ success: true, data: result?.rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'User update failed: ' + error.message });
   }
 };

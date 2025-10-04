@@ -11,15 +11,15 @@ const url = 'https://video.bunnycdn.com/library';
 
 const getVideos = async (req, res) => {
   try {
+    console.log('libIDD ', LIBRARY_ID);
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit) || 10, 1);
     const status = req.query.status || videoStatus.PUBLISHED;
+    const createdBy = req.query.userId || null;
     const offset = (page - 1) * limit;
     const table = status === videoStatus.PENDING ? tables.PENDING_VIDEOS : tables.PUBLISHED_VIDEOS;
-    const sortBy = req.query.sortBy || 'createdAt'; // default fallback
-    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC'; // default DESC
-
-    // Whitelist columns
+    const sortBy = req.query.sortBy || 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC';
     const numericFields = ['views', 'totalWatchTime', 'averageWatchTime', 'engagementScore'];
     const allowedSortFields = [...numericFields, 'createdAt'];
 
@@ -30,19 +30,27 @@ const getVideos = async (req, res) => {
       });
     }
 
-    // If it's numeric field → filter out <= 0 values
-    const whereClause = numericFields.includes(sortBy) ? `WHERE "${sortBy}" > 0` : '';
-
+    // --- Queries with optional createdBy filter ---
     const videoQuery = `
-      SELECT * FROM ${table}
-      ${whereClause}
+      SELECT *
+      FROM ${table}
+      WHERE ($3::UUID IS NULL OR "createdBy" = $3)
+        ${numericFields.includes(sortBy) ? `AND "${sortBy}" > 0` : ''}
       ORDER BY "${sortBy}" ${sortOrder}
       LIMIT $1 OFFSET $2
     `;
-    const countQuery = `SELECT COUNT(*) AS total_count FROM ${table} ${whereClause}`;
 
-    const { rows: videos } = await db.query(videoQuery, [limit, offset]);
-    const { rows: countRows } = await db.query(countQuery);
+    const countQuery = `
+      SELECT COUNT(*) AS total_count
+      FROM ${table}
+      WHERE ($1::UUID IS NULL OR "createdBy" = $1)
+        ${numericFields.includes(sortBy) ? `AND "${sortBy}" > 0` : ''}
+    `;
+
+    // --- Run queries ---
+    const { rows: videos } = await db.query(videoQuery, [limit, offset, createdBy]);
+
+    const { rows: countRows } = await db.query(countQuery, [createdBy]);
     const totalCount = parseInt(countRows[0].total_count, 10);
 
     res.json({
@@ -82,7 +90,13 @@ const getVideo = async (req, res) => {
         message: `A video doesn't exist.`
       });
     }
-    const response = await bunnyClient.get(`videos/${videoId}`);
+    let bunnyData = {};
+    try {
+      const response = await bunnyClient.get(`videos/${videoId}`);
+      bunnyData = response.body;
+    } catch (error) {
+      console.log('Error fetching bunny video ', error);
+    }
     const { category, title, description, status } = rows[0] || {};
 
     res.json({
@@ -90,7 +104,7 @@ const getVideo = async (req, res) => {
       message: 'Video fetched successfully.',
       data: {
         ...rows[0],
-        ...response.body,
+        ...bunnyData,
         category,
         title,
         description,
@@ -122,14 +136,14 @@ const getVideosByGenre = async (req, res) => {
 
     const videoQuery = `
       SELECT *
-      FROM ${tables.VIDEOS}
+      FROM ${tables.PUBLISHED_VIDEOS}
       WHERE genres @> $1::jsonb
       ORDER BY "createdAt" DESC
       LIMIT $2 OFFSET $3
     `;
     const countQuery = `
       SELECT COUNT(*) AS total_count
-      FROM ${tables.VIDEOS}
+      FROM ${tables.PUBLISHED_VIDEOS}
       WHERE genres @> $1::jsonb
     `;
 
@@ -156,6 +170,62 @@ const getVideosByGenre = async (req, res) => {
     });
   }
 };
+
+const getVideosByDashboardView = async (req, res) => {
+  try {
+    const dashboardView = req.params.dashboardView;
+    if (!dashboardView) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dashboard view is required path parameter "dashboardView".'
+      });
+    }
+
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit) || 10, 1);
+    const offset = (page - 1) * limit;
+
+    const videoQuery = `
+      SELECT *
+      FROM ${tables.PUBLISHED_VIDEOS}
+      WHERE "dashboardView" @> $1::jsonb
+      ORDER BY "createdAt" DESC
+      LIMIT $2 OFFSET $3
+    `;
+    const countQuery = `
+      SELECT COUNT(*) AS total_count
+      FROM ${tables.PUBLISHED_VIDEOS}
+      WHERE "dashboardView" @> $1::jsonb
+    `;
+
+    const { rows: videos } = await db.query(videoQuery, [
+      JSON.stringify([dashboardView]),
+      limit,
+      offset
+    ]);
+    const { rows: countRows } = await db.query(countQuery, [JSON.stringify([dashboardView])]);
+    const totalCount = parseInt(countRows[0].total_count, 10);
+
+    res.json({
+      success: true,
+      message: `Videos with dashboardView '${dashboardView}' fetched successfully.`,
+      data: videos,
+      pagination: {
+        currentPage: page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Unable to fetch videos by genre.',
+      error: { message: error.message }
+    });
+  }
+};
+
 const createVideo = async (req, res) => {
   try {
     const {
@@ -171,7 +241,8 @@ const createVideo = async (req, res) => {
       cast,
       languages,
       studio,
-      status
+      status,
+      createdBy
     } = req.body;
 
     // Create virtual video
@@ -193,8 +264,8 @@ const createVideo = async (req, res) => {
     // Add record in db
     await db.query(
       `
-      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "directors", "producers", "cast", "studio", "languages") 
-      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12)
+      INSERT INTO ${tables.VIDEOS} ("guid", "title", "description", "tags", "category", "status", "genres", "directors", "producers", "cast", "studio", "languages", "createdBy") 
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     `,
       [
         data.guid,
@@ -208,7 +279,8 @@ const createVideo = async (req, res) => {
         JSON.stringify(producers || []),
         JSON.stringify(cast || []),
         studio,
-        JSON.stringify(languages || [])
+        JSON.stringify(languages || []),
+        createdBy
       ]
     );
 
@@ -249,6 +321,7 @@ const updatevideo = async (req, res) => {
       languages,
       studio,
       status,
+      dashboardView,
       version
     } = req.body;
 
@@ -281,6 +354,7 @@ const updatevideo = async (req, res) => {
         "cast" = COALESCE($13, "cast"),
         "languages" = COALESCE($14, "languages"),
         "studio" = COALESCE($15, "studio"),
+        "dashboardView" = COALESCE($16, "dashboardView"),
         "modifiedAt" = NOW()
       WHERE "guid" = $1
     `;
@@ -300,7 +374,8 @@ const updatevideo = async (req, res) => {
       producers ? JSON.stringify(producers) : null,
       cast ? JSON.stringify(cast) : null,
       languages ? JSON.stringify(languages) : null,
-      studio
+      studio,
+      dashboardView
     ]);
 
     // Generate tokens required to upload video
@@ -314,7 +389,7 @@ const updatevideo = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to save video draft.',
+      message: 'Failed to update video.',
       error: { message: error.message }
     });
   }
@@ -511,5 +586,6 @@ export {
   getCaptionsList,
   getVideosByGenre,
   globalSearch,
-  updateStats
+  updateStats,
+  getVideosByDashboardView
 };

@@ -1,15 +1,7 @@
 import pg from 'pg';
 import { categories, tables, videoStatus } from './constants/db.js';
 const { Pool } = pg;
-import {
-  DB_HOST,
-  DB_NAME,
-  DB_PASSWORD,
-  DB_PORT,
-  DB_USER,
-  usersTableName,
-  videosReviewsTableName
-} from './constants/common.js';
+import { DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER } from './constants/common.js';
 
 const dbConfig = {
   host: DB_HOST,
@@ -26,9 +18,28 @@ async function initializeDatabase() {
     db = new Pool({ ...dbConfig });
 
     await db.query(`
+      CREATE EXTENSION IF NOT EXISTS citext;
+      CREATE TABLE IF NOT EXISTS ${tables.USERS} (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        username VARCHAR(50) UNIQUE NOT NULL,
+        email CITEXT UNIQUE NOT NULL,
+        "passwordHash" TEXT,
+        name VARCHAR(100),
+        "googleId" TEXT UNIQUE,
+        picture TEXT,
+        "continueWatching" JSONB DEFAULT '[]',
+        "preferedGenres" JSONB DEFAULT '[]',
+        "preferedLanguages" JSONB DEFAULT '[]',
+        "isAdmin" BOOLEAN DEFAULT false,
+        "isModerator" BOOLEAN DEFAULT false,
+        "isUploader" BOOLEAN DEFAULT false,
+        personalised BOOLEAN DEFAULT false
+      );
+
       -- Parent table partitioned by status
       CREATE TABLE IF NOT EXISTS ${tables.VIDEOS} (
         "guid" UUID NOT NULL,
+        "createdBy" UUID NOT NULL REFERENCES ${tables.USERS}(id) ON DELETE CASCADE,
         "category" VARCHAR(20) NOT NULL DEFAULT '${categories.MOVIE}' CHECK ("category" IN ('${categories.MOVIE}', '${categories.SHORTS}', '${categories.SERIES}', '${categories.TRAILER}')),
         "title" VARCHAR(255) NOT NULL,
         "thumbnailFileName" VARCHAR(255) NOT NULL DEFAULT 'thumbnail.jpg',
@@ -37,6 +48,7 @@ async function initializeDatabase() {
         "tags" JSONB DEFAULT '[]'::jsonb,
         "genres" JSONB DEFAULT '[]'::jsonb NOT NULL,
         "languages" JSONB DEFAULT '["English"]'::jsonb NOT NULL,
+        "dashboardView" JSONB DEFAULT '[]'::jsonb,
         "directors" JSONB DEFAULT '[]'::jsonb,
         "producers" JSONB DEFAULT '[]'::jsonb,
         "cast" JSONB DEFAULT '[]'::jsonb,
@@ -44,12 +56,17 @@ async function initializeDatabase() {
         "status" VARCHAR(20) NOT NULL DEFAULT '${videoStatus.PENDING}' CHECK ("status" IN ('${videoStatus.PUBLISHED}', '${videoStatus.PENDING}', '${videoStatus.DRAFT}')),
         "totalWatchTime" BIGINT DEFAULT 0 NOT NULL,
         "averageWatchTime" BIGINT DEFAULT 0 NOT NULL,
+        "engagementScore" BIGINT DEFAULT 0 NOT NULL,
         "views" BIGINT DEFAULT 0 NOT NULL,
         "version" BIGINT DEFAULT 0 NOT NULL,
         "createdAt" timestamptz DEFAULT now() NOT NULL,
         "modifiedAt" timestamptz DEFAULT now() NOT NULL,
-        "expiryTime" timestamptz NOT NULL,
-        PRIMARY KEY ("guid", "status", "category")
+        "expiryTime" timestamptz NOT NULL DEFAULT (now() + interval '1 year'),
+        "parentId" UUID,
+        PRIMARY KEY ("guid", "status", "category"),
+        CONSTRAINT fk_parent_video FOREIGN KEY ("parentId", "status", "category")
+          REFERENCES ${tables.VIDEOS}("guid", "status", "category")
+          ON DELETE CASCADE
       ) PARTITION BY LIST ("status");
 
       -- Status partitions
@@ -58,9 +75,6 @@ async function initializeDatabase() {
 
       CREATE TABLE IF NOT EXISTS ${tables.PENDING_VIDEOS}
         PARTITION OF ${tables.VIDEOS} FOR VALUES IN ('pending');
-
-      CREATE TABLE IF NOT EXISTS ${tables.DRAFT_VIDEOS}
-        PARTITION OF ${tables.VIDEOS} FOR VALUES IN ('draft');
 
       -- Sub-partition published videos by category
       CREATE TABLE IF NOT EXISTS ${tables.PUBLISHED_MOVIES} PARTITION OF ${tables.PUBLISHED_VIDEOS} FOR VALUES IN ('${categories.MOVIE}');
@@ -77,17 +91,7 @@ async function initializeDatabase() {
 
       CREATE EXTENSION IF NOT EXISTS citext;
 
-      CREATE TABLE IF NOT EXISTS ${usersTableName} (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        username VARCHAR(50) UNIQUE NOT NULL,
-        email CITEXT UNIQUE NOT NULL,
-        "passwordHash" TEXT,
-        name VARCHAR(100),
-        "googleId" TEXT UNIQUE,
-        picture TEXT
-      );  
-
-      CREATE TABLE IF NOT EXISTS ${videosReviewsTableName} (
+      CREATE TABLE IF NOT EXISTS ${tables.VIDEO_REVIEWS} (
         id SERIAL PRIMARY KEY,
         video_id UUID NOT NULL,
         user_id UUID NOT NULL,

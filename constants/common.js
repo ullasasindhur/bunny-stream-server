@@ -45,6 +45,3 @@ export const PULLZONE_API_KEY = process.env.PULLZONE_API_KEY;
 export const PULLZONE_URL = process.env.PULLZONE_URL;
 export const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 export const AUTH_CODE_SECRET = process.env.AUTH_CODE_SECRET;
-export const usersTableName = 'users';
-export const videosTableName = 'videos';
-export const videosReviewsTableName = 'video_reviews';
