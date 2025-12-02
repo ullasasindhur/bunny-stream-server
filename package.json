@@ -23,7 +23,7 @@
     "@dotenvx/dotenvx": "^1.48.4",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
-    "express": "^5.1.0",
+    "express": "^5.2.0",
     "got": "^14.4.7",
     "jose": "^6.1.0",
     "node-cron": "^4.2.1",
